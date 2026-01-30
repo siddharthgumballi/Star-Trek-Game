@@ -1,0 +1,48 @@
+[gd_scene load_steps=2 format=3 uid="uid://bridge_interior_001"]
+
+[ext_resource type="Script" path="res://scripts/environment/bridge_interior.gd" id="1_bridge"]
+
+[node name="BridgeInterior" type="Node3D"]
+script = ExtResource("1_bridge")
+
+;; ============================================================================
+;; BRIDGE INTERIOR SCENE
+;; ============================================================================
+;;
+;; This scene creates a detailed Enterprise-D bridge interior.
+;; All geometry is generated procedurally by the script.
+;;
+;; PLACEMENT INSTRUCTIONS:
+;; -----------------------
+;; The bridge should be positioned relative to your Enterprise-D model.
+;; On the Galaxy-class, the bridge is located at the top of the saucer section.
+;;
+;; Typical offset from ship origin: Vector3(0, 8, -40)
+;; (Adjust based on your specific model's scale and orientation)
+;;
+;; SCALE NOTES:
+;; ------------
+;; The bridge is built at 1 unit = 1 meter scale.
+;; Bridge diameter: ~12 meters
+;; Bridge height: ~3 meters
+;;
+;; If your ship model uses a different scale, adjust the bridge's scale
+;; property accordingly, or modify the constants in the script.
+;;
+;; CUSTOMIZATION:
+;; --------------
+;; - Colors can be adjusted via the exported properties in the Inspector
+;; - To add textures: Replace StandardMaterial3D with textured materials
+;; - To use custom meshes: Replace the MeshInstance3D creations with
+;;   loaded PackedScenes or .glb imports
+;;
+;; CAMERA INTEGRATION:
+;; -------------------
+;; Use get_bridge_camera_position() and get_bridge_look_target() for
+;; positioning a first-person bridge camera.
+;;
+;; ALERT MODES:
+;; ------------
+;; Call set_alert_status("red"), set_alert_status("yellow"), or
+;; set_alert_status("normal") to change the bridge lighting.
+;;

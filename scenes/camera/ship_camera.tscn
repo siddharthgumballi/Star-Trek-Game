@@ -1,0 +1,22 @@
+[gd_scene load_steps=2 format=3 uid="uid://b5j7q8w2l4m6n"]
+
+[ext_resource type="Script" uid="uid://dg8m2n4p6q0w2" path="res://scripts/camera/cinematic_camera.gd" id="1_camera"]
+
+[node name="ShipCamera" type="Node3D"]
+script = ExtResource("1_camera")
+follow_distance = 400.0
+follow_height = 200.0
+min_distance = 150.0
+max_distance = 800.0
+zoom_speed = 30.0
+position_lag = 2.5
+rotation_lag = 2.0
+look_ahead = 80.0
+look_down = -60.0
+base_fov = 55.0
+max_fov = 70.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+current = true
+fov = 55.0
+far = 100000.0

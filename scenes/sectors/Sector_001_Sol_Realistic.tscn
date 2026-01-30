@@ -1,0 +1,58 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/environment/sector_sol_realistic.gd" id="1_sector"]
+[ext_resource type="Script" path="res://scripts/environment/starfield.gd" id="2_starfield"]
+[ext_resource type="PackedScene" uid="uid://cxl8qs7v8q2r2" path="res://scenes/ship/starship.tscn" id="3_ship"]
+[ext_resource type="Script" path="res://scripts/ship/engine_effects.gd" id="4_engine"]
+[ext_resource type="Script" path="res://scripts/ship/ship_audio.gd" id="5_audio"]
+[ext_resource type="Script" path="res://scripts/ship/warp_drive.gd" id="6_warp"]
+[ext_resource type="Script" path="res://scripts/camera/camera_manager.gd" id="7_camera"]
+[ext_resource type="Script" path="res://scripts/hud/lcars_hud.gd" id="8_hud"]
+[ext_resource type="Script" path="res://scripts/environment/bridge_interior.gd" id="9_bridge"]
+
+[node name="Sector_001_Sol_Realistic" type="Node3D"]
+script = ExtResource("1_sector")
+
+[node name="Starfield" type="Node3D" parent="."]
+script = ExtResource("2_starfield")
+star_count = 5000
+sphere_radius = 8000000.0
+
+[node name="Starship" parent="." instance=ExtResource("3_ship")]
+
+[node name="EngineEffects" type="Node3D" parent="Starship"]
+script = ExtResource("4_engine")
+ship_controller_path = NodePath("..")
+
+[node name="ShipAudio" type="Node3D" parent="Starship"]
+script = ExtResource("5_audio")
+ship_controller_path = NodePath("..")
+
+[node name="WarpDrive" type="Node3D" parent="Starship"]
+script = ExtResource("6_warp")
+ship_controller_path = NodePath("..")
+
+[node name="BridgeInterior" type="Node3D" parent="."]
+script = ExtResource("9_bridge")
+
+[node name="CameraManager" type="Node3D" parent="."]
+script = ExtResource("7_camera")
+target_ship_path = NodePath("../Starship")
+bridge_interior_path = NodePath("../BridgeInterior")
+external_distance = 120.0
+external_height = 20.0
+zoom_min = 60.0
+zoom_max = 500.0
+
+[node name="LCARSHUD" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("8_hud")
+ship_path = NodePath("../Starship")
+warp_drive_path = NodePath("../Starship/WarpDrive")
+camera_manager_path = NodePath("../CameraManager")

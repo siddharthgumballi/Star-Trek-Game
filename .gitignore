@@ -1,0 +1,56 @@
+# Godot 4 specific
+.godot/
+
+# Godot import files
+*.import
+
+# Export presets (may contain sensitive paths)
+export_presets.cfg
+
+# Exported builds
+*.exe
+*.x86_64
+*.pck
+*.dmg
+*.app/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.directory
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Build directories
+build/
+export/
+dist/
+
+# Blender backup files
+*.blend1
+*.blend2

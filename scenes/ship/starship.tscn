@@ -1,0 +1,21 @@
+[gd_scene load_steps=4 format=3 uid="uid://cxl8qs7v8q2r2"]
+
+[ext_resource type="Script" path="res://scripts/ship/ship_controller.gd" id="1_ship"]
+[ext_resource type="Script" path="res://scripts/ship/ship_model_loader.gd" id="2_model_loader"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_1"]
+size = Vector3(470, 100, 640)
+
+[node name="Starship" type="RigidBody3D"]
+mass = 1500000.0
+gravity_scale = 0.0
+linear_damp = 0.4
+angular_damp = 2.5
+freeze = false
+script = ExtResource("1_ship")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_1")
+
+[node name="ModelLoader" type="Node3D" parent="."]
+script = ExtResource("2_model_loader")
