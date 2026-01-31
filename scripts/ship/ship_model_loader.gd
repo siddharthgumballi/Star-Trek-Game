@@ -103,3 +103,42 @@ func _get_node_aabb(node: Node3D) -> AABB:
 
 func get_model() -> Node3D:
 	return _current_model
+
+## Apply a shader material as overlay to all mesh instances in the ship model
+## Used for warp stretch effect
+func apply_warp_shader(shader_material: ShaderMaterial) -> void:
+	if not _current_model:
+		return
+
+	_apply_shader_recursive(_current_model, shader_material)
+
+func _apply_shader_recursive(node: Node, shader_material: ShaderMaterial) -> void:
+	if node is MeshInstance3D:
+		var mesh_instance: MeshInstance3D = node
+		# Store original material overlay if any
+		if not mesh_instance.has_meta("_original_material_overlay"):
+			mesh_instance.set_meta("_original_material_overlay", mesh_instance.material_overlay)
+		mesh_instance.material_overlay = shader_material
+
+	for child in node.get_children():
+		_apply_shader_recursive(child, shader_material)
+
+## Remove warp shader overlay and restore original material
+func remove_warp_shader() -> void:
+	if not _current_model:
+		return
+
+	_remove_shader_recursive(_current_model)
+
+func _remove_shader_recursive(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mesh_instance: MeshInstance3D = node
+		# Restore original material overlay
+		if mesh_instance.has_meta("_original_material_overlay"):
+			mesh_instance.material_overlay = mesh_instance.get_meta("_original_material_overlay")
+			mesh_instance.remove_meta("_original_material_overlay")
+		else:
+			mesh_instance.material_overlay = null
+
+	for child in node.get_children():
+		_remove_shader_recursive(child)

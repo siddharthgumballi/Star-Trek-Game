@@ -16,9 +16,9 @@ var target_ship: Node3D
 var bridge_interior: BridgeInterior
 
 @export_group("External Camera")
-@export var external_distance: float = 80.0
-@export var external_height: float = 25.0
-@export var zoom_min: float = 30.0
+@export var external_distance: float = 50.0
+@export var external_height: float = 15.0
+@export var zoom_min: float = 20.0
 @export var zoom_max: float = 1000.0
 @export var zoom_speed: float = 20.0
 
@@ -52,7 +52,7 @@ var _free_pitch: float = 0.0
 var _free_zoom: float = 1.0
 
 # Zoom state
-var _current_zoom: float = 80.0
+var _current_zoom: float = 50.0
 
 var _initialized: bool = false
 var _frames_waited: int = 0
@@ -318,3 +318,7 @@ func get_mode() -> CameraMode:
 
 func get_mode_name() -> String:
 	return ["External", "Bridge", "Flyby", "Free"][current_mode]
+
+## Returns true if currently in bridge camera mode
+func is_bridge_mode() -> bool:
+	return current_mode == CameraMode.BRIDGE

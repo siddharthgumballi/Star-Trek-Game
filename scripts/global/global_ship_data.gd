@@ -35,3 +35,10 @@ func get_registry() -> String:
 
 func get_ship_class() -> String:
 	return selected_ship_data.get("class", "Galaxy Class")
+
+func get_maneuverability() -> float:
+	# 1.0 = Galaxy class baseline, higher = more agile
+	return selected_ship_data.get("maneuverability", 1.0)
+
+func get_ship_length() -> float:
+	return selected_ship_data.get("length", 642.5)  # Galaxy class default

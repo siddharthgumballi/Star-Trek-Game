@@ -948,3 +948,32 @@ func get_bridge_camera_position() -> Vector3:
 func get_bridge_look_target() -> Vector3:
 	# Look at viewscreen
 	return global_position + Vector3(0, 1.5, -BRIDGE_RADIUS)
+
+## Flash the viewscreen for warp engage/disengage effect (bridge camera mode only)
+## intensity: 0.0 to 1.0 (maps to emission strength)
+## color: Flash color (default blue-white)
+func flash_viewscreen(intensity: float = 0.8, color: Color = Color(0.7, 0.85, 1.0)) -> void:
+	if not _viewscreen_mesh:
+		return
+
+	# Store original material properties
+	var mat: StandardMaterial3D = _viewscreen_mesh.material_override
+	if not mat:
+		return
+
+	var original_emission: Color = mat.emission
+	var original_energy: float = mat.emission_energy_multiplier
+
+	# Create flash effect
+	var flash_emission: Color = color
+	var flash_energy: float = 5.0 * intensity
+
+	# Apply flash
+	mat.emission = flash_emission
+	mat.emission_energy_multiplier = flash_energy
+
+	# Animate back to original
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(mat, "emission", original_emission, 0.3).set_ease(Tween.EASE_OUT)
+	tween.tween_property(mat, "emission_energy_multiplier", original_energy, 0.3).set_ease(Tween.EASE_OUT)

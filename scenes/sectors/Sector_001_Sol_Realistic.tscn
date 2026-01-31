@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scripts/environment/sector_sol_realistic.gd" id="1_sector"]
 [ext_resource type="PackedScene" uid="uid://cxl8qs7v8q2r2" path="res://scenes/ship/starship.tscn" id="3_ship"]
@@ -8,6 +8,8 @@
 [ext_resource type="Script" path="res://scripts/camera/camera_manager.gd" id="7_camera"]
 [ext_resource type="Script" path="res://scripts/hud/lcars_hud.gd" id="8_hud"]
 [ext_resource type="Script" path="res://scripts/environment/bridge_interior.gd" id="9_bridge"]
+[ext_resource type="Script" path="res://scripts/ship/warp_effects.gd" id="10_warp_effects"]
+[ext_resource type="Script" path="res://scripts/hud/warp_flash_overlay.gd" id="11_flash_overlay"]
 
 [node name="Sector_001_Sol_Realistic" type="Node3D"]
 script = ExtResource("1_sector")
@@ -21,10 +23,18 @@ ship_controller_path = NodePath("..")
 [node name="ShipAudio" type="Node3D" parent="Starship"]
 script = ExtResource("5_audio")
 ship_controller_path = NodePath("..")
+warp_drive_path = NodePath("../WarpDrive")
 
 [node name="WarpDrive" type="Node3D" parent="Starship"]
 script = ExtResource("6_warp")
 ship_controller_path = NodePath("..")
+
+[node name="WarpEffects" type="Node3D" parent="Starship"]
+script = ExtResource("10_warp_effects")
+warp_drive_path = NodePath("../WarpDrive")
+ship_model_loader_path = NodePath("../ModelLoader")
+camera_manager_path = NodePath("../../CameraManager")
+flash_overlay_path = NodePath("../../WarpFlashOverlay")
 
 [node name="BridgeInterior" type="Node3D" parent="."]
 script = ExtResource("9_bridge")
@@ -55,3 +65,7 @@ script = ExtResource("8_hud")
 ship_path = NodePath("../Starship")
 warp_drive_path = NodePath("../Starship/WarpDrive")
 camera_manager_path = NodePath("../CameraManager")
+
+[node name="WarpFlashOverlay" type="CanvasLayer" parent="."]
+layer = 100
+script = ExtResource("11_flash_overlay")

@@ -72,7 +72,32 @@ func _ready() -> void:
 	center_of_mass = center_of_mass_offset
 
 	_setup_inputs()
+	_apply_ship_maneuverability()
 	print("=== SHIP READY === W/S Pitch, A/D Yaw, Z/C Roll, E/Q Impulse")
+
+func _apply_ship_maneuverability() -> void:
+	# Get maneuverability multiplier from selected ship
+	var global_ship = get_node_or_null("/root/GlobalShipData")
+	if global_ship and global_ship.has_method("get_maneuverability"):
+		var maneuverability: float = global_ship.get_maneuverability()
+
+		# Apply multiplier to rotation rates (higher = faster turns)
+		max_pitch_rate *= maneuverability
+		max_yaw_rate *= maneuverability
+		max_roll_rate *= maneuverability
+
+		# Also scale torque to match (smaller ships need less torque)
+		var ship_length: float = global_ship.get_ship_length()
+		var length_ratio: float = ship_length / 642.5  # Galaxy class baseline
+		var mass_scale: float = length_ratio * length_ratio * length_ratio  # Volume scales with cube
+
+		# Adjust mass and torque based on ship size
+		mass = ship_mass * mass_scale
+		pitch_torque *= mass_scale
+		yaw_torque *= mass_scale
+		roll_torque *= mass_scale
+
+		print("Ship maneuverability: ", maneuverability, " mass scale: ", mass_scale)
 
 func _setup_inputs() -> void:
 	var actions: Array[String] = [

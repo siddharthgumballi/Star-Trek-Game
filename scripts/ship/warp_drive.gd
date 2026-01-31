@@ -6,6 +6,7 @@ signal warp_engaged(warp_factor: float)
 signal warp_disengaged()
 signal warp_factor_changed(new_factor: float)
 signal warp_blocked(reason: String, nearest_body: String)
+signal warp_charging_started(warp_factor: float)  # Animation/sound start
 
 @export_group("References")
 @export var ship_controller_path: NodePath
@@ -62,9 +63,15 @@ const TNG_WARP_SCALE: Array = [
 
 # State
 var is_at_warp: bool = false
+var is_charging_warp: bool = false  # True during warp animation before actual warp
 var current_warp_factor: float = 0.0
 var target_warp_factor: float = 1.0
 var warp_transition: float = 0.0  # 0 = impulse, 1 = full warp
+
+# Warp charge timing - ship goes to warp 1 second before audio ends
+# Audio is ~6.5 seconds, adjusted based on user testing
+const WARP_CHARGE_TIME: float = 3.5
+var _charge_timer: float = 0.0
 
 # Visual effect nodes
 var _warp_effect: Node3D
@@ -173,6 +180,9 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("warp_engage"):
 		if is_at_warp:
 			disengage_warp()
+		elif is_charging_warp:
+			# Cancel warp charge
+			_cancel_warp_charge()
 		else:
 			engage_warp()
 
@@ -186,7 +196,20 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("warp_decrease") and is_at_warp:
 		set_warp_factor(target_warp_factor - 1.0)
 
+func _cancel_warp_charge() -> void:
+	if is_charging_warp:
+		is_charging_warp = false
+		_charge_timer = 0.0
+		emit_signal("warp_disengaged")  # Triggers exit sound/animation
+		print("Warp charge cancelled")
+
 func _process(delta: float) -> void:
+	# Handle warp charging timer
+	if is_charging_warp:
+		_charge_timer += delta
+		if _charge_timer >= WARP_CHARGE_TIME:
+			_complete_warp_engage()
+
 	# Use _process for smooth visual updates (not tied to physics tick rate)
 	if is_at_warp:
 		_update_warp(delta)
@@ -270,7 +293,7 @@ func check_warp_clearance() -> Array:
 	return [is_safe, nearest_body, nearest_distance]
 
 func engage_warp() -> void:
-	if is_at_warp:
+	if is_at_warp or is_charging_warp:
 		return
 
 	# Check planetary proximity before engaging warp
@@ -288,15 +311,23 @@ func engage_warp() -> void:
 		print("WARP BLOCKED: ", reason)
 		return
 
-	is_at_warp = true
+	# Start warp charging phase (animation + sound play)
+	is_charging_warp = true
+	_charge_timer = 0.0
 	target_warp_factor = maxf(target_warp_factor, 1.0)
 
 	# Capture the camera's current FOV as the base for warp effects
 	if camera:
 		_base_camera_fov = camera.fov
 
-	# Don't freeze physics - allow steering during warp
-	# We'll handle position movement manually but allow rotation
+	# Signal that warp is starting (triggers animation and sound)
+	emit_signal("warp_charging_started", target_warp_factor)
+	print("Warp ", target_warp_factor, " charging...")
+
+func _complete_warp_engage() -> void:
+	# Called after charge timer completes - actually enter warp
+	is_charging_warp = false
+	is_at_warp = true
 
 	emit_signal("warp_engaged", target_warp_factor)
 	print("Warp ", target_warp_factor, " engaged!")

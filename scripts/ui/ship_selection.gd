@@ -80,12 +80,33 @@ var SHIPS: Dictionary = {
 		"model": "star_trek_online__constitution_class_iii.glb",
 		"length": 560.0,
 		"era": "2402-Present"
+	},
+	"voyager": {
+		"name": "USS Voyager",
+		"registry": "NCC-74656",
+		"class": "Intrepid Class",
+		"max_warp": 9.975,
+		"model": "uss_voyager_4k_textures_star_trek_intrepid.glb",
+		"length": 344.0,
+		"era": "2371-2378",
+		"maneuverability": 1.3  # More agile than Galaxy class
+	},
+	"defiant": {
+		"name": "USS Defiant",
+		"registry": "NX-74205",
+		"class": "Defiant Class",
+		"max_warp": 9.5,
+		"model": "star_trek_-_defiant_class.glb",
+		"length": 170.0,
+		"era": "2370-2375",
+		"maneuverability": 2.5  # Highly maneuverable combat vessel
 	}
 }
 
 var ship_order: Array[String] = [
 	"enterprise_tos", "enterprise_a", "enterprise_b", "enterprise_c",
-	"enterprise_d", "enterprise_e", "enterprise_f", "enterprise_g"
+	"enterprise_d", "enterprise_e", "enterprise_f", "enterprise_g",
+	"voyager", "defiant"
 ]
 
 # UI Colors (LCARS style)
@@ -858,6 +879,24 @@ static func get_ship_data(ship_id: String) -> Dictionary:
 			"max_warp": 9.99,
 			"model": "star_trek_online__constitution_class_iii.glb",
 			"length": 560.0
+		},
+		"voyager": {
+			"name": "USS Voyager",
+			"registry": "NCC-74656",
+			"class": "Intrepid Class",
+			"max_warp": 9.975,
+			"model": "uss_voyager_4k_textures_star_trek_intrepid.glb",
+			"length": 344.0,
+			"maneuverability": 1.3
+		},
+		"defiant": {
+			"name": "USS Defiant",
+			"registry": "NX-74205",
+			"class": "Defiant Class",
+			"max_warp": 9.5,
+			"model": "star_trek_-_defiant_class.glb",
+			"length": 170.0,
+			"maneuverability": 2.5
 		}
 	}
 	return ships.get(ship_id, {})
