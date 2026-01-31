@@ -11,13 +11,14 @@ config_version=5
 [application]
 
 config/name="Star Trek Flight Simulator"
-run/main_scene="res://scenes/ui/ship_selection.tscn"
+run/main_scene="res://scenes/sectors/Sector_001_Sol_Realistic.tscn"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
 GlobalShipData="*res://scripts/global/global_ship_data.gd"
+ScaleConstants="*res://scripts/core/scale_constants.gd"
 
 [display]
 

@@ -28,9 +28,12 @@ class_name SectorSolRealistic
 ##
 ## SCALE NOTES:
 ## ============
-## - Distances are heavily compressed (real Sol system is 4.5B km)
-## - Planet sizes are exaggerated for visibility
-## - Ratios between planets are roughly maintained
+## - Orbital distances: 1 unit = 1000 km (REAL AU scale)
+##   * Earth at 149,600 units = 1 AU = 149.6 million km
+##   * Neptune at 4,498,000 units = 30 AU
+## - Planet/ship sizes: 250x scale for visibility
+##   * Earth radius: 1,595 units (real: 6,371 km)
+##   * Ship size: ~40 units
 ##
 ## TNG VISUAL STYLE:
 ## =================
@@ -40,22 +43,21 @@ class_name SectorSolRealistic
 
 const TEXTURE_BASE_PATH = "res://assets/textures/planets/"
 
-# REALISTIC SCALE: 1 game unit = 1000 km
-# Full impulse (0.25c) = 75 units/second
-# Travel times at full impulse:
-#   Earth to Moon: ~5 seconds
-#   Earth to Mars: ~12 minutes (at closest approach)
-#   Earth to Jupiter: ~2.3 hours
-#
-# Planet radii scaled up ~100x for visibility (otherwise they'd be invisible dots)
-# Orbital motion disabled (imperceptible at this scale)
+# SCALE SYSTEM:
+# - Orbital distances: 1 unit = 1000 km (1 AU = 149,600 units)
+# - Planet radii: 250x for visibility
+# - This hybrid approach keeps astronomical distances real
+#   while making ships and planets visible
+
+# 1 AU in game units (1 unit = 1000 km)
+const AU: float = 149600.0
 
 var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Sun",
 		"type": "star",
 		"distance": 0,
-		"radius": 700,  # Real: 696 units (696,340 km)
+		"radius": 20000,  # Reduced for gameplay (real 250x would be 174,000, engulfing Mercury)
 		"texture": "2k_sun.jpg",
 		"rotation_speed": 0.001,
 		"emission": 5.0,
@@ -64,8 +66,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Mercury",
 		"type": "planet",
-		"distance": 57900,  # 57.9 million km
-		"radius": 250,  # Scaled up for visibility (real: 2.4 units)
+		"distance": 57900,   # 0.387 AU = 57,909,050 km
+		"radius": 610,       # Real: 2,440 km × 250 / 1000 = 610
 		"texture": "2k_mercury.jpg",
 		"rotation_speed": 0.002,
 		"color": Color(0.6, 0.55, 0.5),
@@ -75,8 +77,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Venus",
 		"type": "planet",
-		"distance": 108200,  # 108.2 million km
-		"radius": 600,  # Scaled up (real: 6 units)
+		"distance": 108200,  # 0.723 AU = 108,208,000 km
+		"radius": 1515,      # Real: 6,052 km × 250 / 1000 = 1,513
 		"texture": "2k_venus_surface.jpg",
 		"rotation_speed": -0.001,
 		"color": Color(0.9, 0.8, 0.6),
@@ -86,8 +88,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Earth",
 		"type": "earth",
-		"distance": 149600,  # 149.6 million km (1 AU)
-		"radius": 640,  # Scaled up (real: 6.4 units)
+		"distance": 149600,  # 1.0 AU = 149,600,000 km
+		"radius": 1595,      # Real: 6,371 km × 250 / 1000 = 1,593
 		"texture": "2k_earth_daymap.jpg",
 		"texture_night": "2k_earth_nightmap.jpg",
 		"texture_clouds": "2k_earth_clouds.jpg",
@@ -100,30 +102,30 @@ var planet_configs: Array[Dictionary] = [
 		"name": "Moon",
 		"type": "moon",
 		"parent": "Earth",
-		"distance": 1200,  # Scaled up from 384 to stay outside Earth's visual radius (640)
-		"radius": 175,  # Scaled up (real: 1.7 units)
+		"distance": 385,     # Real: 384,400 km = 384 units (not scaled by 250)
+		"radius": 435,       # Real: 1,737 km × 250 / 1000 = 434
 		"texture": "2k_moon.jpg",
 		"rotation_speed": 0.005,
 		"color": Color(0.75, 0.75, 0.75),
 		"orbital_angle": 0.0,
-		"orbital_speed": 0.01  # Moon orbit visible
+		"orbital_speed": 0.01
 	},
 	{
 		"name": "Starbase 1",
 		"type": "starbase",
 		"parent": "Earth",
-		"distance": 900,  # Between Earth surface (640) and Moon orbit (1200)
-		"radius": 120,  # Visual size of the station
-		"rotation_speed": 0.003,  # Slow majestic rotation
-		"orbital_angle": 2.0,  # Offset from Moon's position
-		"orbital_speed": 0.006,  # Orbit around Earth
+		"distance": 250,     # Closer than Moon, in high Earth orbit
+		"radius": 125,
+		"rotation_speed": 0.003,
+		"orbital_angle": 2.0,
+		"orbital_speed": 0.006,
 		"color": Color(0.7, 0.8, 0.9)
 	},
 	{
 		"name": "Mars",
 		"type": "planet",
-		"distance": 227900,  # 227.9 million km
-		"radius": 340,  # Scaled up (real: 3.4 units)
+		"distance": 227900,  # 1.524 AU = 227,939,200 km
+		"radius": 850,       # Real: 3,390 km × 250 / 1000 = 848
 		"texture": "2k_mars.jpg",
 		"rotation_speed": 0.009,
 		"color": Color(0.85, 0.45, 0.25),
@@ -134,8 +136,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Jupiter",
 		"type": "planet",
-		"distance": 778500,  # 778.5 million km
-		"radius": 700,  # Scaled up 10x (real: 70 units)
+		"distance": 778300,  # 5.203 AU = 778,299,000 km
+		"radius": 17475,     # Real: 69,911 km × 250 / 1000 = 17,478
 		"texture": "2k_jupiter.jpg",
 		"rotation_speed": 0.02,
 		"color": Color(0.85, 0.8, 0.7),
@@ -146,8 +148,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Saturn",
 		"type": "saturn",
-		"distance": 1434000,  # 1.434 billion km
-		"radius": 580,  # Scaled up 10x (real: 58 units)
+		"distance": 1427000, # 9.537 AU = 1,426,666,000 km
+		"radius": 14525,     # Real: 58,232 km × 250 / 1000 = 14,558
 		"texture": "2k_saturn.jpg",
 		"texture_ring": "2k_saturn_ring_alpha.png",
 		"rotation_speed": 0.018,
@@ -161,8 +163,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Uranus",
 		"type": "planet",
-		"distance": 2871000,  # 2.871 billion km
-		"radius": 250,  # Scaled up 10x (real: 25 units)
+		"distance": 2871000, # 19.19 AU = 2,870,658,000 km
+		"radius": 6365,      # Real: 25,362 km × 250 / 1000 = 6,341
 		"texture": "2k_uranus.jpg",
 		"rotation_speed": -0.015,
 		"color": Color(0.6, 0.85, 0.9),
@@ -173,8 +175,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Neptune",
 		"type": "planet",
-		"distance": 4495000,  # 4.495 billion km
-		"radius": 250,  # Scaled up 10x (real: 25 units)
+		"distance": 4498000, # 30.07 AU = 4,498,396,000 km
+		"radius": 6175,      # Real: 24,622 km × 250 / 1000 = 6,156
 		"texture": "2k_neptune.jpg",
 		"rotation_speed": 0.016,
 		"color": Color(0.3, 0.5, 0.9),
@@ -194,9 +196,10 @@ var _sun_light: DirectionalLight3D
 var _player_spawn: Marker3D
 
 @export_group("Spawn Settings")
-## Spawn ~1000 units (1 million km) from Earth - about 2.6x Earth-Moon distance
-@export var spawn_distance_from_earth: float = 1000.0
-@export var spawn_height: float = 200.0
+## Spawn outside Earth's radius (1595 units) + buffer for clear view of planet
+## Moon is at 385 units, Starbase at 250 units from Earth
+@export var spawn_distance_from_earth: float = 3000.0
+@export var spawn_height: float = 500.0
 
 func _ready() -> void:
 	_setup_environment()
@@ -212,12 +215,14 @@ func _setup_environment() -> void:
 	_environment = WorldEnvironment.new()
 	var env := Environment.new()
 
-	# Deep space sky
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.005, 0.005, 0.015)
-	sky_mat.sky_horizon_color = Color(0.01, 0.01, 0.025)
-	sky_mat.ground_bottom_color = Color(0.005, 0.005, 0.01)
-	sky_mat.ground_horizon_color = Color(0.01, 0.01, 0.02)
+	# Milky way panoramic sky
+	var sky_mat := PanoramaSkyMaterial.new()
+	var milky_way_path: String = TEXTURE_BASE_PATH + "2k_stars_milky_way.jpg"
+	if ResourceLoader.exists(milky_way_path):
+		sky_mat.panorama = load(milky_way_path)
+		print("  Loaded milky way sky texture")
+	else:
+		print("  WARNING: Milky way texture not found at: ", milky_way_path)
 
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
@@ -226,20 +231,15 @@ func _setup_environment() -> void:
 
 	# Cool TNG ambient
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.12, 0.12, 0.18)
-	env.ambient_light_energy = 0.4
+	env.ambient_light_color = Color(0.1, 0.1, 0.15)
+	env.ambient_light_energy = 0.3
 
 	# Filmic tonemapping for cinematic look
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_white = 6.0
 
-	# Bloom for star glow (reduced to prevent double-star effect)
-	env.glow_enabled = true
-	env.glow_intensity = 0.4
-	env.glow_strength = 0.6
-	env.glow_bloom = 0.05
-	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
-	env.glow_hdr_threshold = 1.2
+	# Glow disabled
+	env.glow_enabled = false
 
 	_environment.environment = env
 	add_child(_environment)
@@ -353,9 +353,7 @@ func _create_sun(config: Dictionary) -> Node3D:
 	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	sun.add_child(mesh)
 
-	# Subtle corona glow (reduced size to prevent double-star appearance)
-	var corona := _create_corona(config["radius"] * 1.05, Color(1.0, 0.95, 0.8, 0.08))
-	sun.add_child(corona)
+	# Corona removed - was causing excessive brightness
 
 	# Store mesh reference for rotation
 	sun.set_meta("mesh", mesh)
@@ -390,11 +388,6 @@ func _create_earth(config: Dictionary) -> Node3D:
 	mesh.rotation_degrees.z = config.get("axial_tilt", 23.4)
 	mesh.material_override = mat
 	earth.add_child(mesh)
-
-	# Atmosphere
-	var atmo := _create_atmosphere(config["radius"] * 1.02, Color(0.4, 0.6, 1.0, 0.25))
-	atmo.rotation_degrees.z = config.get("axial_tilt", 23.4)
-	earth.add_child(atmo)
 
 	# Clouds layer
 	var clouds_tex_path: String = TEXTURE_BASE_PATH + config.get("texture_clouds", "")
@@ -668,15 +661,23 @@ func _setup_player_spawn() -> void:
 
 	if _planets.has("Earth"):
 		var earth: Node3D = _planets["Earth"]
-		# Position player OUTSIDE Earth's orbit (radially outward from Sun)
-		# This ensures the player never spawns in Earth's orbital path
-		var earth_dir: Vector3 = earth.position.normalized()  # Direction from Sun to Earth
-		var outward_offset: Vector3 = earth_dir * spawn_distance_from_earth  # Push player further from Sun
-		_player_spawn.position = earth.position + outward_offset + Vector3(0, spawn_height, 0)
-		# Face toward Earth - calculate rotation manually since node isn't in tree yet
-		var dir_to_earth: Vector3 = (earth.position - _player_spawn.position).normalized()
-		_player_spawn.basis = Basis.looking_at(dir_to_earth, Vector3.UP)
-		print("  Player spawn outside Earth orbit at: ", _player_spawn.position)
+		var earth_pos: Vector3 = earth.position
+
+		# Spawn above Earth (Y axis) to avoid Moon's orbital plane
+		# Moon orbits at 4000 units in XZ plane, so spawning on Y avoids collision
+		var spawn_pos: Vector3 = earth_pos + Vector3(spawn_distance_from_earth * 0.7, spawn_height + 2000, spawn_distance_from_earth * 0.7)
+
+		_player_spawn.position = spawn_pos
+		# Face toward Earth
+		_player_spawn.look_at(earth_pos, Vector3.UP)
+
+		print("=== SPAWN SETUP ===")
+		print("  Earth at: ", earth_pos)
+		print("  Ship spawn at: ", spawn_pos)
+	else:
+		# Fallback spawn at origin area
+		_player_spawn.position = Vector3(0, 500, 5000)
+		print("  No Earth found, spawning at fallback position")
 
 	add_child(_player_spawn)
 
@@ -687,6 +688,10 @@ func _position_player_ship() -> void:
 		print("=== SHIP POSITIONED ===")
 		print("  Ship global position: ", ship.global_position)
 		print("  Ship rotation: ", ship.global_rotation_degrees)
+		# Print ship children to verify model loader
+		print("  Ship children: ", ship.get_child_count())
+		for child in ship.get_children():
+			print("    - ", child.name, " (", child.get_class(), ")")
 	else:
 		print("ERROR: Could not find Starship node!")
 

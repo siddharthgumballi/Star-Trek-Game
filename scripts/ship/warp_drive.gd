@@ -47,8 +47,8 @@ const TNG_WARP_SCALE: Array = [
 
 @export_group("Safety")
 ## Minimum distance from any celestial body to engage warp (1 unit = 1000 km)
-## Default 1000 units = 1 million km
-@export var min_safe_warp_distance: float = 1000.0
+## Default 2500 units = 2.5 million km (accounts for 250x visual planet scale)
+@export var min_safe_warp_distance: float = 2500.0
 
 @export_group("Visual Effects")
 @export var star_stretch_amount: float = 50.0

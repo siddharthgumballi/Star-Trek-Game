@@ -12,6 +12,7 @@ func _ready() -> void:
 	# Wait a frame for GlobalShipData to be ready
 	await get_tree().process_frame
 	_load_selected_ship()
+	print("ShipModelLoader: Model loading complete")
 
 func _load_selected_ship() -> void:
 	# Get the model path from GlobalShipData
@@ -47,8 +48,9 @@ func _load_selected_ship() -> void:
 			var aabb := _get_node_aabb(_current_model)
 			var max_dim: float = max(aabb.size.x, max(aabb.size.y, aabb.size.z))
 
-			# Target size (Enterprise-D is about 640m, we want similar visual size)
-			var target_size: float = 500.0
+			# Target size - 250x scale (real Enterprise-D is 642m = 0.642km)
+			# At 250x: 160.5 km = ~40 units (1 unit ≈ 4 km)
+			var target_size: float = 40.0
 			if max_dim > 0:
 				var scale_factor: float = target_size / max_dim
 				# Apply custom scale from ship data

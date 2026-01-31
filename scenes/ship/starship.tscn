@@ -4,7 +4,7 @@
 [ext_resource type="Script" path="res://scripts/ship/ship_model_loader.gd" id="2_model_loader"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_1"]
-size = Vector3(470, 100, 640)
+size = Vector3(87.5, 20, 125)
 
 [node name="Starship" type="RigidBody3D"]
 mass = 1500000.0

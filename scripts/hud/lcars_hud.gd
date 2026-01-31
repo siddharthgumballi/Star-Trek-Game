@@ -74,7 +74,7 @@ var _orbit_active: bool = false
 var _orbit_target: Node3D = null
 var _orbit_target_name: String = ""
 var _orbit_angle: float = 0.0
-var _orbit_distance: float = 335.0  # Standard orbit distance (35,000 km above surface)
+var _orbit_distance: float = 1000.0  # Standard orbit distance (default, overridden per planet)
 var _orbit_speed: float = 0.1  # Radians per second
 var _orbit_height: float = 200.0  # Height above orbital plane
 
@@ -1169,54 +1169,58 @@ func _try_enter_orbit() -> void:
 		print("No planet in range for standard orbit")
 
 func _get_orbit_range(planet_name: String) -> float:
-	# Maximum distance to enter orbit (based on visual planet radius + margin)
-	# Visual radii: Sun=700, Jupiter=700, Earth=640, Saturn=580, Mars=340, etc.
+	# Maximum distance to enter orbit (approximately 2x planet radius)
+	# Planet radii at 250x scale: Jupiter=17475, Saturn=14525, Earth=1595, etc.
 	match planet_name:
 		"Jupiter":
-			return 1800.0  # radius 700
+			return 35000.0  # radius 17,475
 		"Saturn":
-			return 1500.0  # radius 580
+			return 29000.0  # radius 14,525
 		"Earth":
-			return 1600.0  # radius 640
+			return 3200.0   # radius 1,595
 		"Venus":
-			return 1500.0  # radius 600
-		"Uranus", "Neptune":
-			return 800.0   # radius 250
+			return 3000.0   # radius 1,515
+		"Uranus":
+			return 12700.0  # radius 6,365
+		"Neptune":
+			return 12400.0  # radius 6,175
 		"Mars":
-			return 900.0   # radius 340
+			return 1700.0   # radius 850
 		"Mercury":
-			return 700.0   # radius 250
+			return 1200.0   # radius 610
 		"Moon":
-			return 600.0   # radius 175 - smaller range to not conflict with Earth
+			return 900.0    # radius 435 - smaller range to not conflict with Earth
 		"Starbase 1":
-			return 400.0   # radius 120 - smaller range for station
+			return 300.0    # radius 125 - smaller range for station
 		_:
-			return 1000.0
+			return 2000.0
 
 func _get_orbit_distance(planet_name: String) -> float:
-	# Standard orbit distance: 35,000 km (35 units) above planet surface
-	# Orbit distance = visual radius + 35
+	# Standard orbit distance: radius + altitude margin
+	# Margin scales with planet size: gas giants +500, medium +200, small +100
 	match planet_name:
 		"Jupiter":
-			return 735.0   # radius 700 + 35
+			return 18000.0  # radius 17,475 + 525
 		"Saturn":
-			return 615.0   # radius 580 + 35
+			return 15000.0  # radius 14,525 + 475
 		"Earth":
-			return 675.0   # radius 640 + 35
+			return 1700.0   # radius 1,595 + 105
 		"Venus":
-			return 635.0   # radius 600 + 35
-		"Uranus", "Neptune":
-			return 285.0   # radius 250 + 35
+			return 1620.0   # radius 1,515 + 105
+		"Uranus":
+			return 6600.0   # radius 6,365 + 235
+		"Neptune":
+			return 6400.0   # radius 6,175 + 225
 		"Mars":
-			return 375.0   # radius 340 + 35
+			return 950.0    # radius 850 + 100
 		"Mercury":
-			return 285.0   # radius 250 + 35
+			return 710.0    # radius 610 + 100
 		"Moon":
-			return 210.0   # radius 175 + 35
+			return 500.0    # radius 435 + 65
 		"Starbase 1":
-			return 155.0   # radius 120 + 35
+			return 175.0    # radius 125 + 50
 		_:
-			return 335.0   # default radius 300 + 35
+			return 1000.0   # default
 
 func _update_orbit(delta: float) -> void:
 	if not _orbit_active or not _orbit_target or not ship:
@@ -1705,11 +1709,11 @@ func _update_autopilot(_delta: float) -> void:
 		return  # Don't do anything else while aligning
 
 	# Check if we've arrived
-	var arrival_distance: float = _get_orbit_range(_selected_destination_name) if _selected_destination_name != "Sun" else 2000.0
+	var arrival_distance: float = _get_orbit_range(_selected_destination_name) if _selected_destination_name != "Sun" else 25000.0
 
-	# If at warp, drop out when within 5 million km (5,000 units)
+	# If at warp, drop out at orbit range + buffer (minimum 5000 units = 5M km)
 	if _autopilot_using_warp and warp_drive and warp_drive.is_at_warp:
-		arrival_distance = 5000.0  # 5 million km
+		arrival_distance = max(arrival_distance + 2000.0, 5000.0)
 
 	if distance < arrival_distance:
 		print("Arrived at ", _selected_destination_name)

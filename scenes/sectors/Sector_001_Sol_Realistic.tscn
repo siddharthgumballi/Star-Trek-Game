@@ -1,7 +1,6 @@
 [gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/environment/sector_sol_realistic.gd" id="1_sector"]
-[ext_resource type="Script" path="res://scripts/environment/starfield.gd" id="2_starfield"]
 [ext_resource type="PackedScene" uid="uid://cxl8qs7v8q2r2" path="res://scenes/ship/starship.tscn" id="3_ship"]
 [ext_resource type="Script" path="res://scripts/ship/engine_effects.gd" id="4_engine"]
 [ext_resource type="Script" path="res://scripts/ship/ship_audio.gd" id="5_audio"]
@@ -12,11 +11,6 @@
 
 [node name="Sector_001_Sol_Realistic" type="Node3D"]
 script = ExtResource("1_sector")
-
-[node name="Starfield" type="Node3D" parent="."]
-script = ExtResource("2_starfield")
-star_count = 5000
-sphere_radius = 8000000.0
 
 [node name="Starship" parent="." instance=ExtResource("3_ship")]
 
@@ -39,10 +33,15 @@ script = ExtResource("9_bridge")
 script = ExtResource("7_camera")
 target_ship_path = NodePath("../Starship")
 bridge_interior_path = NodePath("../BridgeInterior")
-external_distance = 120.0
-external_height = 20.0
-zoom_min = 60.0
-zoom_max = 500.0
+external_distance = 80.0
+external_height = 25.0
+zoom_min = 30.0
+zoom_max = 1000.0
+
+[node name="MainCamera" type="Camera3D" parent="CameraManager"]
+current = true
+fov = 55.0
+far = 5000000.0
 
 [node name="LCARSHUD" type="Control" parent="."]
 layout_mode = 3
