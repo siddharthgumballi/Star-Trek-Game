@@ -250,12 +250,12 @@ func _create_lcars_ui() -> void:
 	style.border_color = lcars_orange
 	_main_panel.add_theme_stylebox_override("panel", style)
 	_main_panel.position = Vector2(20, 20)
-	_main_panel.size = Vector2(320, 330)
+	_main_panel.size = Vector2(320, 380)
 	add_child(_main_panel)
 
 	var vbox := VBoxContainer.new()
 	vbox.position = Vector2(15, 15)
-	vbox.size = Vector2(290, 300)
+	vbox.size = Vector2(290, 350)
 	_main_panel.add_child(vbox)
 
 	# Title bar - show selected ship name
@@ -304,6 +304,39 @@ func _create_lcars_ui() -> void:
 	_controls_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
 	_controls_label.add_theme_font_size_override("font_size", 11)
 	vbox.add_child(_controls_label)
+
+	# Spacer
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 10)
+	vbox.add_child(spacer)
+
+	# Change Ship button
+	var change_ship_btn := Button.new()
+	change_ship_btn.text = "CHANGE SHIP"
+	change_ship_btn.custom_minimum_size = Vector2(120, 30)
+	change_ship_btn.pressed.connect(_on_change_ship_pressed)
+
+	var btn_style := StyleBoxFlat.new()
+	btn_style.bg_color = Color(0.15, 0.15, 0.25)
+	btn_style.corner_radius_top_left = 5
+	btn_style.corner_radius_top_right = 5
+	btn_style.corner_radius_bottom_left = 5
+	btn_style.corner_radius_bottom_right = 5
+	btn_style.border_width_left = 2
+	btn_style.border_width_right = 2
+	btn_style.border_width_top = 2
+	btn_style.border_width_bottom = 2
+	btn_style.border_color = lcars_blue
+	change_ship_btn.add_theme_stylebox_override("normal", btn_style)
+
+	var btn_hover := btn_style.duplicate()
+	btn_hover.bg_color = Color(0.2, 0.25, 0.35)
+	btn_hover.border_color = lcars_orange
+	change_ship_btn.add_theme_stylebox_override("hover", btn_hover)
+
+	change_ship_btn.add_theme_color_override("font_color", lcars_blue)
+	change_ship_btn.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(change_ship_btn)
 
 	# Create minimap
 	_create_minimap()
@@ -1904,7 +1937,15 @@ func _update_minimap() -> void:
 
 	var map_size: Vector2 = _minimap.size
 	var map_center: Vector2 = map_size / 2
-	var ship_pos: Vector3 = ship.global_position
+
+	# Get ship position - use universe coordinates for expanded map (Sun-centered)
+	# This makes the ship appear to move on the map, not the planets
+	var ship_pos: Vector3 = ship.global_position  # World position (for compact mode)
+	var ship_universe_pos: Vector3 = ship_pos     # Universe position (for expanded mode)
+
+	var fo = get_node_or_null("/root/FloatingOrigin")
+	if fo:
+		ship_universe_pos = fo.get_player_universe_position()
 
 	# Different scale for expanded vs compact map
 	# Realistic scale: Neptune at 4.5M units, Mars at 228K units
@@ -1918,18 +1959,19 @@ func _update_minimap() -> void:
 	# Update ship position
 	if _minimap_expanded:
 		# Expanded: Sun-centered with pan offset, ship moves on map
+		# Use universe coordinates so ship appears to move through solar system
 		var adjusted_center: Vector2 = map_center + _map_offset
-		var ship_x: float = adjusted_center.x + ship_pos.x * map_scale
-		var ship_y: float = adjusted_center.y + ship_pos.z * map_scale
+		var ship_x: float = adjusted_center.x + ship_universe_pos.x * map_scale
+		var ship_y: float = adjusted_center.y + ship_universe_pos.z * map_scale
 		_minimap_ship.position = Vector2(ship_x, ship_y)
 	else:
 		# Compact: Ship-centered
 		_minimap_ship.position = map_center
 
-	# Update planet positions
-	_update_planet_markers(map_center, map_scale, ship_pos)
+	# Update planet positions (pass universe ship pos for expanded mode)
+	_update_planet_markers(map_center, map_scale, ship_pos, ship_universe_pos)
 
-func _update_planet_markers(map_center: Vector2, map_scale: float, ship_pos: Vector3) -> void:
+func _update_planet_markers(map_center: Vector2, map_scale: float, ship_pos: Vector3, ship_universe_pos: Vector3 = Vector3.ZERO) -> void:
 	if not sector:
 		return
 
@@ -1937,6 +1979,9 @@ func _update_planet_markers(map_center: Vector2, map_scale: float, ship_pos: Vec
 	var adjusted_center: Vector2 = map_center
 	if _minimap_expanded:
 		adjusted_center += _map_offset
+
+	# Get FloatingOrigin for universe coordinate conversion
+	var fo = get_node_or_null("/root/FloatingOrigin")
 
 	for planet_name in PLANET_COLORS.keys():
 		var marker: Button = _planet_markers.get(planet_name)
@@ -1952,7 +1997,11 @@ func _update_planet_markers(map_center: Vector2, map_scale: float, ship_pos: Vec
 				label_btn.visible = false
 			continue
 
-		var planet_pos: Vector3 = planet.global_position
+		# Get planet position - use universe coordinates for expanded mode
+		var planet_pos: Vector3 = planet.global_position  # World position
+		var planet_universe_pos: Vector3 = planet_pos     # Universe position
+		if fo:
+			planet_universe_pos = fo.world_to_universe(planet_pos)
 
 		# Calculate marker size (larger in expanded mode for easier clicking)
 		var size: float = 6.0
@@ -1977,9 +2026,11 @@ func _update_planet_markers(map_center: Vector2, map_scale: float, ship_pos: Vec
 		var x: float
 		var y: float
 		if _minimap_expanded:
-			x = adjusted_center.x + planet_pos.x * map_scale
-			y = adjusted_center.y + planet_pos.z * map_scale
+			# Expanded: Use universe coordinates (Sun at center, ship moves)
+			x = adjusted_center.x + planet_universe_pos.x * map_scale
+			y = adjusted_center.y + planet_universe_pos.z * map_scale
 		else:
+			# Compact: Ship-centered (use relative world positions)
 			var rel: Vector3 = planet_pos - ship_pos
 			x = map_center.x + rel.x * map_scale
 			y = map_center.y + rel.z * map_scale
@@ -2022,3 +2073,8 @@ func add_tracked_object(obj: Node3D) -> void:
 
 func remove_tracked_object(obj: Node3D) -> void:
 	_tracked_objects.erase(obj)
+
+func _on_change_ship_pressed() -> void:
+	# Return to ship selection screen
+	print("Returning to ship selection...")
+	get_tree().change_scene_to_file("res://scenes/ui/ship_selection.tscn")

@@ -35,6 +35,27 @@ class_name SectorSolRealistic
 ##   * Earth radius: 1,595 units (real: 6,371 km)
 ##   * Ship size: ~40 units
 ##
+## FLOATING ORIGIN SYSTEM:
+## =======================
+## This scene uses a Floating Origin system to prevent floating-point
+## precision errors at large distances. Key points:
+##
+## - The player ship ALWAYS stays near world origin (0,0,0)
+## - When the ship moves >50 units from origin, the entire universe shifts
+## - All celestial bodies are children of _celestial_bodies node
+## - _celestial_bodies is registered with FloatingOrigin autoload
+## - Distance calculations use world positions (always valid)
+## - Warp travel is fully compatible (no special handling needed)
+##
+## To add new objects to the world:
+##   1. Make them children of _celestial_bodies, OR
+##   2. Register them with FloatingOrigin.register_world_object()
+##
+## DO NOT:
+## - Position objects using raw large coordinates
+## - Use absolute positions for UI distance displays (use world_to_universe)
+## - Assume origin is at the Sun (origin follows the player)
+##
 ## TNG VISUAL STYLE:
 ## =================
 ## - Soft, cinematic lighting
@@ -102,7 +123,7 @@ var planet_configs: Array[Dictionary] = [
 		"name": "Moon",
 		"type": "moon",
 		"parent": "Earth",
-		"distance": 385,     # Real: 384,400 km = 384 units (not scaled by 250)
+		"distance": 3000,    # Outside Earth's visual radius (1595) + margin
 		"radius": 435,       # Real: 1,737 km × 250 / 1000 = 434
 		"texture": "2k_moon.jpg",
 		"rotation_speed": 0.005,
@@ -114,7 +135,7 @@ var planet_configs: Array[Dictionary] = [
 		"name": "Starbase 1",
 		"type": "starbase",
 		"parent": "Earth",
-		"distance": 250,     # Closer than Moon, in high Earth orbit
+		"distance": 2200,    # Between Earth surface (1595) and Moon (3000)
 		"radius": 125,
 		"rotation_speed": 0.003,
 		"orbital_angle": 2.0,
@@ -194,6 +215,8 @@ var _planets: Dictionary = {}
 var _environment: WorldEnvironment
 var _sun_light: DirectionalLight3D
 var _player_spawn: Marker3D
+var _celestial_bodies: Node3D  # Container for all planets/stations (registered with FloatingOrigin)
+var _player_ship: Node3D       # Reference to player ship
 
 @export_group("Spawn Settings")
 ## Spawn outside Earth's radius (1595 units) + buffer for clear view of planet
@@ -207,9 +230,11 @@ func _ready() -> void:
 	_create_all_bodies()
 	_setup_player_spawn()
 	_position_player_ship()
+	_setup_floating_origin()
 
 	print("=== SECTOR 001: SOL SYSTEM (REALISTIC) ===")
 	print("    Textures expected at: ", TEXTURE_BASE_PATH)
+	print("    Floating Origin: ENABLED")
 
 func _setup_environment() -> void:
 	_environment = WorldEnvironment.new()
@@ -271,14 +296,14 @@ func _setup_lighting() -> void:
 	add_child(rim)
 
 func _create_all_bodies() -> void:
-	var bodies_node := Node3D.new()
-	bodies_node.name = "CelestialBodies"
-	add_child(bodies_node)
+	_celestial_bodies = Node3D.new()
+	_celestial_bodies.name = "CelestialBodies"
+	add_child(_celestial_bodies)
 
 	for config in planet_configs:
 		var body: Node3D = _create_body(config)
 		if body:
-			bodies_node.add_child(body)
+			_celestial_bodies.add_child(body)
 			_planets[config["name"]] = body
 
 func _create_body(config: Dictionary) -> Node3D:
@@ -682,18 +707,55 @@ func _setup_player_spawn() -> void:
 	add_child(_player_spawn)
 
 func _position_player_ship() -> void:
-	var ship := get_node_or_null("Starship")
-	if ship:
-		ship.global_transform = _player_spawn.global_transform
-		print("=== SHIP POSITIONED ===")
-		print("  Ship global position: ", ship.global_position)
-		print("  Ship rotation: ", ship.global_rotation_degrees)
+	_player_ship = get_node_or_null("Starship")
+	if _player_ship:
+		# FLOATING ORIGIN SETUP:
+		# Instead of moving ship to spawn point, we:
+		# 1. Keep ship at origin (0,0,0)
+		# 2. Offset the entire universe so spawn point is at origin
+
+		var spawn_transform: Transform3D = _player_spawn.global_transform
+		var universe_offset: Vector3 = spawn_transform.origin
+
+		# Ship stays at origin, facing the right direction
+		_player_ship.global_position = Vector3.ZERO
+		_player_ship.global_transform.basis = spawn_transform.basis
+
+		# Offset all celestial bodies so spawn point is now at origin
+		_celestial_bodies.global_position = -universe_offset
+
+		print("=== SHIP POSITIONED (FLOATING ORIGIN) ===")
+		print("  Universe offset: ", universe_offset)
+		print("  Ship at origin: ", _player_ship.global_position)
+		print("  Ship rotation: ", _player_ship.global_rotation_degrees)
+		print("  CelestialBodies offset: ", _celestial_bodies.global_position)
+
 		# Print ship children to verify model loader
-		print("  Ship children: ", ship.get_child_count())
-		for child in ship.get_children():
+		print("  Ship children: ", _player_ship.get_child_count())
+		for child in _player_ship.get_children():
 			print("    - ", child.name, " (", child.get_class(), ")")
 	else:
 		print("ERROR: Could not find Starship node!")
+
+func _setup_floating_origin() -> void:
+	# Register with the FloatingOrigin autoload
+	var fo = get_node_or_null("/root/FloatingOrigin")
+	if fo and _player_ship and _celestial_bodies:
+		# Register the player ship
+		fo.set_player_ship(_player_ship)
+
+		# Register the celestial bodies container
+		# When origin shifts, this entire node (and all children) will be moved
+		fo.register_world_object(_celestial_bodies)
+
+		# Set the initial world offset to match where we spawned
+		# This is the "true" universe position of the origin
+		fo.world_offset = _player_spawn.global_transform.origin
+
+		print("=== FLOATING ORIGIN CONFIGURED ===")
+		print("  Initial world offset: ", fo.world_offset)
+	else:
+		push_warning("FloatingOrigin autoload not found or missing references!")
 
 func _process(delta: float) -> void:
 	# Update orbital positions and rotations
@@ -756,3 +818,28 @@ func get_planet_names() -> Array:
 
 func get_earth() -> Node3D:
 	return get_planet("Earth")
+
+func get_player_ship() -> Node3D:
+	return _player_ship
+
+## Get a planet's position in universe coordinates (true solar system position)
+## Use this for UI displays showing absolute position
+func get_planet_universe_position(planet_name: String) -> Vector3:
+	var fo = get_node_or_null("/root/FloatingOrigin")
+	var planet: Node3D = _planets.get(planet_name, null)
+	if fo and planet:
+		return fo.world_to_universe(planet.global_position)
+	elif planet:
+		return planet.global_position
+	return Vector3.ZERO
+
+## Get distance from player to a planet (works in world space, unaffected by floating origin)
+func get_distance_to_planet(planet_name: String) -> float:
+	var planet: Node3D = _planets.get(planet_name, null)
+	if planet and _player_ship:
+		return _player_ship.global_position.distance_to(planet.global_position)
+	return -1.0
+
+## Get the Sun's position in universe coordinates (always at 0,0,0)
+func get_sun_universe_position() -> Vector3:
+	return Vector3.ZERO  # Sun is at universe origin by definition
