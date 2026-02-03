@@ -16,12 +16,14 @@ A 3D starship flight simulator set in the Star Trek universe, built with Godot 4
   - USS Enterprise NCC-1701-E (Sovereign Class)
   - USS Enterprise NCC-1701-F (Odyssey Class)
   - USS Enterprise NCC-1701-G (Constitution III Class)
+  - USS Voyager NCC-74656 (Intrepid Class)
+  - USS Defiant NX-74205 (Defiant Class)
 
 - **Realistic Sol System** - Explore a scale model of our solar system:
   - Sun, Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune
   - Earth's Moon with proper orbital mechanics
   - Starbase 1 orbiting Earth
-  - Realistic distances and planet sizes (1 unit = 1,000 km)
+  - Realistic distances and planet sizes (100× uniform scale)
 
 - **Authentic Warp Drive** - TNG-accurate warp scale:
   - Warp 1 = 1c (speed of light)
@@ -114,11 +116,12 @@ Star Trek Game/
 
 ## Technical Details
 
-### Scale
-- 1 game unit = 1,000 kilometers
-- Earth radius: 640 units (6,400 km)
-- Earth-Sun distance: 149,600 units (149.6 million km)
-- Full impulse = 0.25c (74,948 km/s)
+### Scale (100× Uniform World Scale)
+- 1 game unit = 10 kilometers
+- Earth radius: 637 units (6,371 km)
+- Earth-Sun distance: 14,960,000 units (149.6 million km / 1 AU)
+- Full impulse = 0.25c (74,948 km/s = 7,495 units/s)
+- Floating origin system prevents precision issues at large distances
 
 ### Warp Speed Formula
 Uses the TNG warp scale where speed increases exponentially approaching Warp 10 (which is infinite and unattainable).
