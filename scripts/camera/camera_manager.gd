@@ -16,18 +16,18 @@ var target_ship: Node3D
 var bridge_interior: BridgeInterior
 
 @export_group("External Camera")
-@export var external_distance: float = 50.0
-@export var external_height: float = 15.0
-@export var zoom_min: float = 20.0
-@export var zoom_max: float = 1000.0
-@export var zoom_speed: float = 20.0
+@export var external_distance: float = 18.0
+@export var external_height: float = 2.0
+@export var zoom_min: float = 8.0
+@export var zoom_max: float = 300.0
+@export var zoom_speed: float = 5.0
 
 @export_group("Bridge Camera")
 @export var bridge_offset: Vector3 = Vector3(0, 8, -40)
 @export var bridge_fov: float = 75.0
 
 @export_group("Flyby Camera")
-@export var flyby_distance: float = 300.0
+@export var flyby_distance: float = 80.0
 @export var flyby_orbit_speed: float = 0.1
 
 @export_group("Free Camera")
@@ -41,7 +41,7 @@ var _flyby_angle: float = 0.0
 
 # Orbit camera state (for click-drag)
 var _orbit_yaw: float = 0.0      # Horizontal angle around ship
-var _orbit_pitch: float = 0.15   # Vertical angle (radians)
+var _orbit_pitch: float = 0.05   # Vertical angle (radians) - slightly above level
 var _is_dragging: bool = false
 var _orbit_sensitivity: float = 0.005
 
@@ -52,7 +52,7 @@ var _free_pitch: float = 0.0
 var _free_zoom: float = 1.0
 
 # Zoom state
-var _current_zoom: float = 50.0
+var _current_zoom: float = 18.0
 
 var _initialized: bool = false
 var _frames_waited: int = 0
@@ -76,9 +76,17 @@ func _ready() -> void:
 		add_child(_camera)
 
 	_camera.current = true
-	_camera.far = 5000000.0  # 5 million units to see distant planets
-	_camera.near = 1.0
+	_camera.far = 600000.0  # 600K units - covers warp arrival distance (500K = 5M km)
+	_camera.near = 0.5  # Near plane for ship visibility
 	_camera.fov = 55.0
+	_camera.cull_mask = 0xFFFFFFFF  # Ensure all render layers are visible
+	print("=== CAMERA SETUP ===")
+	print("  Camera name: ", _camera.name)
+	print("  Camera far: ", _camera.far)
+	print("  Camera near: ", _camera.near)
+	print("  Camera fov: ", _camera.fov)
+	print("  Camera cull_mask: ", _camera.cull_mask)
+	print("  Far/near ratio: ", _camera.far / _camera.near)
 
 	_setup_inputs()
 	_current_zoom = external_distance
@@ -214,8 +222,10 @@ func _process(delta: float) -> void:
 		CameraMode.FREE:
 			_update_free(delta)
 
+var _debug_frame_count: int = 0
+
 func _update_external(_delta: float) -> void:
-	# Camera only moves when user drags or zooms - no automatic movement
+	# Camera stays locked to ship - no lag when moving
 
 	# Calculate camera offset in LOCAL ship space
 	var local_offset := Vector3(
@@ -228,11 +238,33 @@ func _update_external(_delta: float) -> void:
 	var ship_basis: Basis = target_ship.global_transform.basis
 	var world_offset: Vector3 = ship_basis * local_offset
 
-	# Set camera position (ship position + rotated offset)
+	# Camera position is always locked to ship position + offset
 	_camera.global_position = target_ship.global_position + world_offset
 
 	# Look at ship
 	_camera.look_at(target_ship.global_position, Vector3.UP)
+
+	# DEBUG: Print positions once
+	_debug_frame_count += 1
+	if _debug_frame_count == 60:  # Print after 1 second
+		print("=== CAMERA DEBUG ===")
+		print("  Ship position: ", target_ship.global_position)
+		print("  Camera position: ", _camera.global_position)
+		print("  Camera forward: ", -_camera.global_transform.basis.z)
+		print("  Camera far: ", _camera.far)
+		print("  Camera near: ", _camera.near)
+		print("  Camera fov: ", _camera.fov)
+		print("  Camera current: ", _camera.current)
+		print("  Zoom: ", _current_zoom)
+		print("  Distance to ship: ", _camera.global_position.distance_to(target_ship.global_position))
+		# Check for other cameras that might be active
+		var viewports := get_tree().root.get_viewport()
+		if viewports:
+			var active_cam := viewports.get_camera_3d()
+			if active_cam:
+				print("  Active camera: ", active_cam.name, " at ", active_cam.global_position)
+				if active_cam != _camera:
+					print("  WARNING: Different camera is active!")
 
 func _update_bridge(_delta: float) -> void:
 	var t_basis: Basis = target_ship.global_transform.basis
@@ -275,13 +307,20 @@ func _update_flyby(delta: float) -> void:
 func _update_free(_delta: float) -> void:
 	# Free camera - orbits around ship in WORLD space (not ship's local space)
 	# Ship turns, camera stays in same world position relative to ship
+	var zoom := maxf(_current_zoom, 10.0)  # Ensure minimum zoom to avoid look_at error
 	var offset := Vector3(
-		sin(_free_yaw) * cos(_free_pitch) * _current_zoom,
-		sin(_free_pitch) * _current_zoom + external_height,
-		cos(_free_yaw) * cos(_free_pitch) * _current_zoom
+		sin(_free_yaw) * cos(_free_pitch) * zoom,
+		sin(_free_pitch) * zoom + external_height,
+		cos(_free_yaw) * cos(_free_pitch) * zoom
 	)
 
+	# Ensure offset is never zero to prevent look_at error
+	if offset.length_squared() < 1.0:
+		offset = Vector3(0, external_height, zoom)
+
+	# Camera position is always locked to ship position + offset
 	_camera.global_position = target_ship.global_position + offset
+
 	_camera.look_at(target_ship.global_position, Vector3.UP)
 
 func set_mode(mode: CameraMode) -> void:

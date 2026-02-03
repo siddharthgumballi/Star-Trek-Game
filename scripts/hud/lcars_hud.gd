@@ -67,6 +67,7 @@ var _selected_speed: int = 2  # 0=1/4, 1=1/2, 2=3/4, 3=Full
 var _autopilot_active: bool = false
 var _autopilot_destination: Vector3 = Vector3.ZERO
 var _autopilot_aligning: bool = false  # True while turning to face target before warp
+var _autopilot_last_distance: float = -1.0  # Track previous distance for overshoot detection
 var _disengage_button: Button = null
 
 # Orbit mode
@@ -75,8 +76,8 @@ var _orbit_target: Node3D = null
 var _orbit_target_name: String = ""
 var _orbit_angle: float = 0.0
 var _orbit_distance: float = 1000.0  # Standard orbit distance (default, overridden per planet)
-var _orbit_speed: float = 0.1  # Radians per second
-var _orbit_height: float = 200.0  # Height above orbital plane
+var _orbit_speed: float = 0.1  # Radians per second (angular - NOT scaled)
+var _orbit_height: float = 500.0  # Height above orbital plane (scaled for visibility)
 
 # Docking mode
 var _docked: bool = false
@@ -97,6 +98,13 @@ var PLANET_COLORS: Dictionary = {
 	"Saturn": Color(0.9, 0.8, 0.5),
 	"Uranus": Color(0.5, 0.8, 0.9),
 	"Neptune": Color(0.3, 0.4, 0.9)
+}
+
+# Map visual offsets for child objects (so they don't overlap parent on map)
+# These are pixel offsets applied when markers would otherwise overlap
+const MAP_CHILD_OFFSETS: Dictionary = {
+	"Moon": Vector2(25, -15),       # Offset up-right from Earth
+	"Starbase 1": Vector2(-25, 15)  # Offset down-left from Earth
 }
 
 # Tracked objects for minimap
@@ -131,6 +139,20 @@ var _arrival_dismiss_button: Button
 
 # ETA display
 var _eta_label: Label
+
+# Coordinate navigation panel
+var _coord_panel: Panel
+var _coord_x_input: SpinBox
+var _coord_y_input: SpinBox
+var _coord_z_input: SpinBox
+var _coord_warp_input: SpinBox
+var _coord_use_warp: bool = true
+var _coord_impulse_speed: int = 3  # 0=1/4, 1=1/2, 2=3/4, 3=Full
+var _coord_mode_impulse: Button
+var _coord_mode_warp: Button
+var _coord_impulse_container: HBoxContainer
+var _coord_warp_container: HBoxContainer
+var _coord_impulse_buttons: Array[Button] = []
 
 func _ready() -> void:
 	# Resolve node paths
@@ -282,11 +304,8 @@ func _create_lcars_ui() -> void:
 	_warp_label = _create_data_label("WARP", lcars_purple)
 	vbox.add_child(_warp_label)
 
-	# Heading display (clickable)
+	# Heading display (non-clickable)
 	_heading_label = _create_data_label("HEADING", lcars_yellow)
-	_heading_label.mouse_filter = Control.MOUSE_FILTER_STOP
-	_heading_label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_heading_label.gui_input.connect(_on_heading_label_clicked)
 	vbox.add_child(_heading_label)
 
 	# Camera mode
@@ -300,7 +319,7 @@ func _create_lcars_ui() -> void:
 
 	# Controls help
 	_controls_label = Label.new()
-	_controls_label.text = "E/Q Impulse | W/S Pitch | A/D Yaw\nZ/C Roll | Space Stop | O Orbit\nShift+W Warp | +/- Warp Factor\nShift+D Dock | F1-F4 Camera | M Map\nCtrl+H Set Heading | Click map for course"
+	_controls_label.text = "E/Q Impulse | W/S Pitch | A/D Yaw\nZ/C Roll | Space Stop | O Orbit\nShift+W Warp | +/- Warp Factor\nShift+D Dock | F1-F4 Camera | M Map"
 	_controls_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
 	_controls_label.add_theme_font_size_override("font_size", 11)
 	vbox.add_child(_controls_label)
@@ -310,12 +329,7 @@ func _create_lcars_ui() -> void:
 	spacer.custom_minimum_size = Vector2(0, 10)
 	vbox.add_child(spacer)
 
-	# Change Ship button
-	var change_ship_btn := Button.new()
-	change_ship_btn.text = "CHANGE SHIP"
-	change_ship_btn.custom_minimum_size = Vector2(120, 30)
-	change_ship_btn.pressed.connect(_on_change_ship_pressed)
-
+	# Button style (shared)
 	var btn_style := StyleBoxFlat.new()
 	btn_style.bg_color = Color(0.15, 0.15, 0.25)
 	btn_style.corner_radius_top_left = 5
@@ -327,13 +341,34 @@ func _create_lcars_ui() -> void:
 	btn_style.border_width_top = 2
 	btn_style.border_width_bottom = 2
 	btn_style.border_color = lcars_blue
-	change_ship_btn.add_theme_stylebox_override("normal", btn_style)
 
 	var btn_hover := btn_style.duplicate()
 	btn_hover.bg_color = Color(0.2, 0.25, 0.35)
 	btn_hover.border_color = lcars_orange
-	change_ship_btn.add_theme_stylebox_override("hover", btn_hover)
 
+	# Set Course button
+	var set_course_btn := Button.new()
+	set_course_btn.text = "SET COURSE"
+	set_course_btn.custom_minimum_size = Vector2(120, 30)
+	set_course_btn.pressed.connect(_show_coord_panel)
+	set_course_btn.add_theme_stylebox_override("normal", btn_style.duplicate())
+	set_course_btn.add_theme_stylebox_override("hover", btn_hover.duplicate())
+	set_course_btn.add_theme_color_override("font_color", lcars_yellow)
+	set_course_btn.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(set_course_btn)
+
+	# Small spacer between buttons
+	var btn_spacer := Control.new()
+	btn_spacer.custom_minimum_size = Vector2(0, 5)
+	vbox.add_child(btn_spacer)
+
+	# Change Ship button
+	var change_ship_btn := Button.new()
+	change_ship_btn.text = "CHANGE SHIP"
+	change_ship_btn.custom_minimum_size = Vector2(120, 30)
+	change_ship_btn.pressed.connect(_on_change_ship_pressed)
+	change_ship_btn.add_theme_stylebox_override("normal", btn_style.duplicate())
+	change_ship_btn.add_theme_stylebox_override("hover", btn_hover.duplicate())
 	change_ship_btn.add_theme_color_override("font_color", lcars_blue)
 	change_ship_btn.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(change_ship_btn)
@@ -446,9 +481,9 @@ func _update_eta() -> void:
 			var hours: int = int((eta_seconds - days * 86400) / 3600)
 			eta_str = "%d days %d hr" % [days, hours]
 
-		# Format distance
+		# Format distance (at 100× scale: 1 unit = 10 km)
 		var dist_str: String
-		var dist_km: float = distance * 1000.0  # 1 unit = 1000 km
+		var dist_km: float = distance * 10.0  # 1 unit = 1000/100 = 10 km
 		if dist_km >= 1000000000:  # 1 billion km
 			dist_str = "%.2f B km" % (dist_km / 1000000000.0)
 		elif dist_km >= 1000000:  # 1 million km
@@ -832,7 +867,7 @@ func _update_course_info() -> void:
 		return
 
 	var distance: float = ship.global_position.distance_to(_selected_destination.global_position)
-	var distance_km: float = distance * 1000.0  # 1 unit = 1000 km
+	var distance_km: float = distance * 10.0  # At 100× scale: 1 unit = 10 km
 
 	# Format distance
 	var dist_str: String
@@ -878,6 +913,7 @@ func _on_engage_pressed() -> void:
 
 	_autopilot_active = true
 	_autopilot_destination = _selected_destination.global_position
+	_autopilot_last_distance = -1.0  # Reset distance tracking
 	_course_panel.visible = false
 
 	if _course_use_warp and warp_drive:
@@ -1202,58 +1238,60 @@ func _try_enter_orbit() -> void:
 		print("No planet in range for standard orbit")
 
 func _get_orbit_range(planet_name: String) -> float:
-	# Maximum distance to enter orbit (approximately 2x planet radius)
-	# Planet radii at 250x scale: Jupiter=17475, Saturn=14525, Earth=1595, etc.
+	# Maximum distance to enter orbit (scaled for 100× world)
+	# Should be ~2-5× planet radius for good visibility
 	match planet_name:
+		"Sun":
+			return 120000.0   # Radius 69,600 - stay well back
 		"Jupiter":
-			return 35000.0  # radius 17,475
+			return 32000.0    # Radius 6,991
 		"Saturn":
-			return 29000.0  # radius 14,525
-		"Earth":
-			return 3200.0   # radius 1,595
-		"Venus":
-			return 3000.0   # radius 1,515
+			return 28000.0    # Radius 5,823
 		"Uranus":
-			return 12700.0  # radius 6,365
+			return 12000.0    # Radius 2,536
 		"Neptune":
-			return 12400.0  # radius 6,175
+			return 12000.0    # Radius 2,462
+		"Earth":
+			return 3200.0     # Radius 637
+		"Venus":
+			return 3200.0     # Radius 605
 		"Mars":
-			return 1700.0   # radius 850
+			return 2000.0     # Radius 339
 		"Mercury":
-			return 1200.0   # radius 610
+			return 1600.0     # Radius 244
 		"Moon":
-			return 900.0    # radius 435 - smaller range to not conflict with Earth
+			return 800.0      # Radius 174
 		"Starbase 1":
-			return 300.0    # radius 125 - smaller range for station
+			return 600.0      # Radius 100 (scaled for visibility)
 		_:
-			return 2000.0
+			return 2000.0     # Default for unknown bodies
 
 func _get_orbit_distance(planet_name: String) -> float:
-	# Standard orbit distance: radius + altitude margin
-	# Margin scales with planet size: gas giants +500, medium +200, small +100
+	# Standard orbit distance: radius + altitude margin (100× scale)
+	# Margin scales with planet size: gas giants +200, medium +80, small +40
 	match planet_name:
 		"Jupiter":
-			return 18000.0  # radius 17,475 + 525
+			return 7200.0   # radius 6,991 + 209
 		"Saturn":
-			return 15000.0  # radius 14,525 + 475
+			return 6000.0   # radius 5,823 + 177
 		"Earth":
-			return 1700.0   # radius 1,595 + 105
+			return 680.0    # radius 637 + 43
 		"Venus":
-			return 1620.0   # radius 1,515 + 105
+			return 650.0    # radius 605 + 45
 		"Uranus":
-			return 6600.0   # radius 6,365 + 235
+			return 2640.0   # radius 2,536 + 104
 		"Neptune":
-			return 6400.0   # radius 6,175 + 225
+			return 2560.0   # radius 2,462 + 98
 		"Mars":
-			return 950.0    # radius 850 + 100
+			return 380.0    # radius 339 + 41
 		"Mercury":
-			return 710.0    # radius 610 + 100
+			return 285.0    # radius 244 + 41
 		"Moon":
-			return 500.0    # radius 435 + 65
+			return 200.0    # radius 174 + 26
 		"Starbase 1":
-			return 175.0    # radius 125 + 50
+			return 120.0    # radius 100 + 20
 		_:
-			return 1000.0   # default
+			return 400.0    # default
 
 func _update_orbit(delta: float) -> void:
 	if not _orbit_active or not _orbit_target or not ship:
@@ -1336,7 +1374,7 @@ func _try_dock() -> void:
 	var starbase = sector.get_planet("Starbase 1") if sector.has_method("get_planet") else null
 	if starbase:
 		var dist: float = ship.global_position.distance_to(starbase.global_position)
-		if dist < 300.0:  # Within docking range
+		if dist < 300.0:  # Within docking range (starbase radius 125 + margin)
 			_dock("Starbase 1")
 			return
 
@@ -1658,14 +1696,14 @@ func _draw_orbit_rings() -> void:
 		child.queue_free()
 
 	var map_center: Vector2 = _minimap.size / 2 + _map_offset
-	var max_distance: float = 5000000.0 / _map_zoom  # Zoom affects visible range
+	var max_distance: float = 500000000.0 / _map_zoom  # Zoom affects visible range (100× scale)
 	var map_scale: float = (min(_minimap.size.x, _minimap.size.y) / 2 - 20) / max_distance
 
-	# Draw orbit circles using Line2D for each planet orbit (realistic distances)
+	# Draw orbit circles using Line2D for each planet orbit (at 100× scale)
 	var orbit_distances: Dictionary = {
-		"Mercury": 57900, "Venus": 108200, "Earth": 149600,
-		"Mars": 227900, "Jupiter": 778500, "Saturn": 1434000,
-		"Uranus": 2871000, "Neptune": 4495000
+		"Mercury": 5790000, "Venus": 10820000, "Earth": 14960000,
+		"Mars": 22790000, "Jupiter": 77850000, "Saturn": 143200000,
+		"Uranus": 287100000, "Neptune": 449800000
 	}
 
 	for planet_name in orbit_distances.keys():
@@ -1711,6 +1749,12 @@ func _update_autopilot(_delta: float) -> void:
 	# Update destination if tracking a moving body (like Moon)
 	if _selected_destination:
 		_autopilot_destination = _selected_destination.global_position
+		# DEBUG: Track outer planets
+		if _selected_destination_name in ["Uranus", "Neptune"]:
+			if Engine.get_frames_drawn() % 60 == 0:  # Print once per second
+				print("DEBUG Autopilot to ", _selected_destination_name, ":")
+				print("  Planet global_pos: ", _selected_destination.global_position)
+				print("  Ship global_pos: ", ship.global_position)
 
 	var ship_pos: Vector3 = ship.global_position
 	var to_target: Vector3 = _autopilot_destination - ship_pos
@@ -1724,44 +1768,57 @@ func _update_autopilot(_delta: float) -> void:
 	# Calculate angle between current heading and target (always positive)
 	var dot: float = current_forward.dot(target_dir)
 	var angle_to_target: float = acos(clampf(dot, -1.0, 1.0))
-	var is_aligned: bool = angle_to_target < 0.05  # ~3 degrees
+	var is_aligned: bool = angle_to_target < 0.01  # ~0.5 degrees - very precise
 
 	# Handle alignment phase for warp
 	if _autopilot_aligning:
 		if is_aligned:
 			# Alignment complete - now level the ship, then engage warp
 			_autopilot_aligning = false
+			_autopilot_last_distance = distance  # Initialize distance tracking
 			# Correct roll to level the ship
 			_apply_roll_correction(current_forward, current_up)
 			if warp_drive:
 				warp_drive.engage_warp()
 				print("Alignment complete - Warp ", warp_drive.target_warp_factor, " engaged!")
 		else:
-			# Still aligning - rotate toward target (fast: 180° in 3 seconds)
-			_apply_autopilot_rotation_v2(current_forward, current_up, target_dir, 1.05)
+			# Fast alignment - 180° in 1 second
+			_apply_autopilot_rotation_v2(current_forward, current_up, target_dir, 3.14)
 		return  # Don't do anything else while aligning
 
-	# Check if we've arrived
-	var arrival_distance: float = _get_orbit_range(_selected_destination_name) if _selected_destination_name != "Sun" else 25000.0
+	# Check if we've arrived (distances at 100× scale: 1 unit = 10 km)
+	# Warp arrival: 1 million km = 100,000 units
+	var arrival_distance: float
+	if not _selected_destination:
+		# Coordinate-based navigation - arrive at 10,000 units (~100,000 km)
+		arrival_distance = 10000.0
+	elif _selected_destination_name == "Sun":
+		arrival_distance = 100000.0  # Safe distance from Sun (radius 69,600)
+	else:
+		arrival_distance = _get_orbit_range(_selected_destination_name)
 
-	# If at warp, drop out at orbit range + buffer (minimum 5000 units = 5M km)
+	# If at warp, drop out at 2 million km (200,000 units) from destination
+	# But use PREDICTIVE stopping - check if we'll reach it in the next few frames
 	if _autopilot_using_warp and warp_drive and warp_drive.is_at_warp:
-		arrival_distance = max(arrival_distance + 2000.0, 5000.0)
+		# 2 million km = 200,000 units at 100× scale
+		arrival_distance = 200000.0
+
+		# Predictive check: calculate closing speed and stop BEFORE we overshoot
+		if _autopilot_last_distance > 0:
+			var closing_speed: float = _autopilot_last_distance - distance  # Units closed this frame
+			# If we'll reach arrival distance in the next 2 frames, stop now
+			var frames_to_arrival: float = (distance - arrival_distance) / maxf(closing_speed, 1.0)
+			if frames_to_arrival < 2.0 and distance < arrival_distance * 5:
+				# We're about to arrive - stop now!
+				_autopilot_last_distance = distance
+				print("Predictive arrival at ", _selected_destination_name, " - distance: ", int(distance))
+				_trigger_arrival()
+				return
+
+	_autopilot_last_distance = distance
 
 	if distance < arrival_distance:
-		print("Arrived at ", _selected_destination_name)
-		_autopilot_active = false
-		_autopilot_aligning = false
-		_hide_disengage_button()
-
-		# Drop out of warp if using warp autopilot
-		if _autopilot_using_warp and warp_drive and warp_drive.is_at_warp:
-			warp_drive.disengage_warp()  # Goes to full impulse
-			_autopilot_using_warp = false
-
-		# Show arrival prompt (unless it's the Sun)
-		if _selected_destination and _selected_destination_name != "Sun":
-			_show_arrival_prompt(_selected_destination_name)
+		_trigger_arrival()
 		return
 
 	# Continue course corrections during travel
@@ -1770,6 +1827,34 @@ func _update_autopilot(_delta: float) -> void:
 	else:
 		# Aligned with target - correct roll to keep ship level
 		_apply_roll_correction(current_forward, current_up)
+
+## Handle arrival at destination - stop ship and show prompt
+func _trigger_arrival() -> void:
+	print("Arrived at ", _selected_destination_name)
+	_autopilot_active = false
+	_autopilot_aligning = false
+	_autopilot_last_distance = -1.0
+	_hide_disengage_button()
+
+	# Drop out of warp if using warp autopilot
+	if _autopilot_using_warp and warp_drive and warp_drive.is_at_warp:
+		warp_drive.disengage_warp()
+		_autopilot_using_warp = false
+
+	# Come to full stop on arrival
+	if ship:
+		ship.current_impulse = ShipController.ImpulseLevel.STOP
+		ship._update_target_speed()
+		ship.linear_velocity = Vector3.ZERO
+		ship.angular_velocity = Vector3.ZERO
+
+	# Show arrival notification
+	if _selected_destination and _selected_destination_name != "Sun":
+		_show_arrival_prompt(_selected_destination_name)
+	elif not _selected_destination:
+		if warp_drive and warp_drive.is_at_warp:
+			warp_drive.disengage_warp(true)
+		_show_alert("ARRIVED AT COORDINATES - ALL STOP")
 
 ## Apply autopilot rotation using cross product (guaranteed shortest path)
 func _apply_autopilot_rotation_v2(current_forward: Vector3, current_up: Vector3, target_dir: Vector3, max_speed: float) -> void:
@@ -1848,8 +1933,8 @@ func _update_impulse() -> void:
 
 	var impulse_name: String = ship.get_impulse_name()
 
-	# Calculate actual speed (1 unit = 1000 km, so speed * 1000 = km/s)
-	var speed_kms: float = abs(ship.forward_speed) * 1000.0  # km/s
+	# Calculate actual speed (at 100× scale: 1 unit = 10 km, so speed × 10 = km/s)
+	var speed_kms: float = abs(ship.forward_speed) * 10.0  # km/s
 	var speed_c: float = speed_kms / 299792.0  # Fraction of light speed
 
 	# Format speed display
@@ -1947,13 +2032,13 @@ func _update_minimap() -> void:
 	if fo:
 		ship_universe_pos = fo.get_player_universe_position()
 
-	# Different scale for expanded vs compact map
-	# Realistic scale: Neptune at 4.5M units, Mars at 228K units
+	# Different scale for expanded vs compact map (at 100× scale)
+	# Neptune at ~450M units, Mars at ~23M units
 	var max_distance: float
 	if _minimap_expanded:
-		max_distance = 5000000.0 / _map_zoom  # Apply zoom
+		max_distance = 500000000.0 / _map_zoom  # 500M units, apply zoom
 	else:
-		max_distance = 500000.0
+		max_distance = 50000000.0  # 50M units (shows inner planets)
 	var map_scale: float = (min(map_size.x, map_size.y) / 2 - 20) / max_distance
 
 	# Update ship position
@@ -2029,6 +2114,12 @@ func _update_planet_markers(map_center: Vector2, map_scale: float, ship_pos: Vec
 			# Expanded: Use universe coordinates (Sun at center, ship moves)
 			x = adjusted_center.x + planet_universe_pos.x * map_scale
 			y = adjusted_center.y + planet_universe_pos.z * map_scale
+
+			# Apply visual offset for child objects so they don't overlap parents
+			if MAP_CHILD_OFFSETS.has(planet_name):
+				var offset: Vector2 = MAP_CHILD_OFFSETS[planet_name]
+				x += offset.x
+				y += offset.y
 		else:
 			# Compact: Ship-centered (use relative world positions)
 			var rel: Vector3 = planet_pos - ship_pos
@@ -2062,9 +2153,9 @@ func _update_planet_markers(map_center: Vector2, map_scale: float, ship_pos: Vec
 			style_hover.corner_radius_bottom_left = corner_radius
 			style_hover.corner_radius_bottom_right = corner_radius
 
-		# Update label button (expanded mode only, skip Moon)
+		# Update label button (expanded mode only)
 		if label_btn:
-			label_btn.visible = in_bounds and _minimap_expanded and planet_name != "Moon"
+			label_btn.visible = in_bounds and _minimap_expanded
 			label_btn.position = Vector2(x + size/2 + 4, y - 8)
 
 func add_tracked_object(obj: Node3D) -> void:
@@ -2078,3 +2169,380 @@ func _on_change_ship_pressed() -> void:
 	# Return to ship selection screen
 	print("Returning to ship selection...")
 	get_tree().change_scene_to_file("res://scenes/ui/ship_selection.tscn")
+
+# =============================================================================
+# COORDINATE NAVIGATION PANEL
+# =============================================================================
+
+func _show_coord_panel() -> void:
+	if not _coord_panel:
+		_create_coord_panel()
+
+	# Pre-fill with current ship position (in universe coordinates)
+	if ship:
+		var fo = get_node_or_null("/root/FloatingOrigin")
+		var universe_pos: Vector3 = ship.global_position
+		if fo and fo.has_method("world_to_universe"):
+			universe_pos = fo.world_to_universe(ship.global_position)
+		_coord_x_input.value = universe_pos.x
+		_coord_y_input.value = universe_pos.y
+		_coord_z_input.value = universe_pos.z
+
+	_coord_panel.visible = true
+
+func _create_coord_panel() -> void:
+	_coord_panel = Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.05, 0.1, 0.95)
+	style.corner_radius_top_left = 10
+	style.corner_radius_top_right = 10
+	style.corner_radius_bottom_left = 10
+	style.corner_radius_bottom_right = 10
+	style.border_width_left = 3
+	style.border_width_right = 3
+	style.border_width_top = 3
+	style.border_width_bottom = 3
+	style.border_color = lcars_yellow
+	_coord_panel.add_theme_stylebox_override("panel", style)
+	_coord_panel.size = Vector2(350, 380)
+	_coord_panel.position = Vector2(360, 80)
+	_coord_panel.visible = false
+	add_child(_coord_panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.position = Vector2(15, 10)
+	vbox.size = Vector2(320, 300)
+	_coord_panel.add_child(vbox)
+
+	# Title
+	var title := Label.new()
+	title.text = "SET COURSE - COORDINATES"
+	title.add_theme_color_override("font_color", lcars_yellow)
+	title.add_theme_font_size_override("font_size", 16)
+	vbox.add_child(title)
+
+	# Help text
+	var help := Label.new()
+	help.text = "100× scale | Earth ~15M from Sun"
+	help.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+	help.add_theme_font_size_override("font_size", 10)
+	vbox.add_child(help)
+
+	# X input
+	var x_hbox := HBoxContainer.new()
+	x_hbox.add_theme_constant_override("separation", 10)
+	vbox.add_child(x_hbox)
+
+	var x_label := Label.new()
+	x_label.text = "X:"
+	x_label.add_theme_color_override("font_color", lcars_blue)
+	x_label.custom_minimum_size = Vector2(30, 0)
+	x_hbox.add_child(x_label)
+
+	_coord_x_input = SpinBox.new()
+	_coord_x_input.min_value = -10000000
+	_coord_x_input.max_value = 10000000
+	_coord_x_input.step = 100
+	_coord_x_input.custom_minimum_size = Vector2(200, 30)
+	_coord_x_input.allow_greater = true
+	_coord_x_input.allow_lesser = true
+	x_hbox.add_child(_coord_x_input)
+
+	# Y input
+	var y_hbox := HBoxContainer.new()
+	y_hbox.add_theme_constant_override("separation", 10)
+	vbox.add_child(y_hbox)
+
+	var y_label := Label.new()
+	y_label.text = "Y:"
+	y_label.add_theme_color_override("font_color", lcars_blue)
+	y_label.custom_minimum_size = Vector2(30, 0)
+	y_hbox.add_child(y_label)
+
+	_coord_y_input = SpinBox.new()
+	_coord_y_input.min_value = -10000000
+	_coord_y_input.max_value = 10000000
+	_coord_y_input.step = 100
+	_coord_y_input.custom_minimum_size = Vector2(200, 30)
+	_coord_y_input.allow_greater = true
+	_coord_y_input.allow_lesser = true
+	y_hbox.add_child(_coord_y_input)
+
+	# Z input
+	var z_hbox := HBoxContainer.new()
+	z_hbox.add_theme_constant_override("separation", 10)
+	vbox.add_child(z_hbox)
+
+	var z_label := Label.new()
+	z_label.text = "Z:"
+	z_label.add_theme_color_override("font_color", lcars_blue)
+	z_label.custom_minimum_size = Vector2(30, 0)
+	z_hbox.add_child(z_label)
+
+	_coord_z_input = SpinBox.new()
+	_coord_z_input.min_value = -10000000
+	_coord_z_input.max_value = 10000000
+	_coord_z_input.step = 100
+	_coord_z_input.custom_minimum_size = Vector2(200, 30)
+	_coord_z_input.allow_greater = true
+	_coord_z_input.allow_lesser = true
+	z_hbox.add_child(_coord_z_input)
+
+	# Spacer
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 10)
+	vbox.add_child(spacer)
+
+	# Mode toggle (IMPULSE / WARP)
+	var mode_hbox := HBoxContainer.new()
+	mode_hbox.add_theme_constant_override("separation", 5)
+	vbox.add_child(mode_hbox)
+
+	_coord_mode_impulse = Button.new()
+	_coord_mode_impulse.text = "IMPULSE"
+	_coord_mode_impulse.custom_minimum_size = Vector2(80, 30)
+	_coord_mode_impulse.pressed.connect(_on_coord_mode_impulse)
+	mode_hbox.add_child(_coord_mode_impulse)
+
+	_coord_mode_warp = Button.new()
+	_coord_mode_warp.text = "WARP"
+	_coord_mode_warp.custom_minimum_size = Vector2(80, 30)
+	_coord_mode_warp.pressed.connect(_on_coord_mode_warp)
+	mode_hbox.add_child(_coord_mode_warp)
+
+	# Impulse speed container (hidden by default)
+	_coord_impulse_container = HBoxContainer.new()
+	_coord_impulse_container.add_theme_constant_override("separation", 5)
+	_coord_impulse_container.visible = false
+	vbox.add_child(_coord_impulse_container)
+
+	var impulse_names: Array[String] = ["1/4", "1/2", "3/4", "FULL"]
+	_coord_impulse_buttons.clear()
+	for i in range(4):
+		var btn := Button.new()
+		btn.text = impulse_names[i]
+		btn.custom_minimum_size = Vector2(50, 28)
+		btn.pressed.connect(_on_coord_impulse_selected.bind(i))
+		_coord_impulse_container.add_child(btn)
+		_coord_impulse_buttons.append(btn)
+
+	# Warp factor container (visible by default)
+	_coord_warp_container = HBoxContainer.new()
+	_coord_warp_container.add_theme_constant_override("separation", 10)
+	vbox.add_child(_coord_warp_container)
+
+	var warp_label := Label.new()
+	warp_label.text = "Warp Factor:"
+	warp_label.add_theme_color_override("font_color", lcars_purple)
+	warp_label.custom_minimum_size = Vector2(90, 0)
+	_coord_warp_container.add_child(warp_label)
+
+	_coord_warp_input = SpinBox.new()
+	_coord_warp_input.min_value = 1.0
+	_coord_warp_input.max_value = 9.99
+	_coord_warp_input.step = 0.1
+	_coord_warp_input.value = 5.0
+	_coord_warp_input.custom_minimum_size = Vector2(100, 30)
+	if warp_drive:
+		_coord_warp_input.max_value = warp_drive.max_warp_factor
+	_coord_warp_container.add_child(_coord_warp_input)
+
+	# Initialize mode styles
+	_update_coord_mode_styles()
+	_update_coord_impulse_styles()
+
+	# Distance preview
+	var distance_label := Label.new()
+	distance_label.name = "DistancePreview"
+	distance_label.text = "Distance: ---"
+	distance_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	distance_label.add_theme_font_size_override("font_size", 11)
+	vbox.add_child(distance_label)
+
+	# Update distance when coords change
+	_coord_x_input.value_changed.connect(func(_v): _update_coord_distance_preview())
+	_coord_y_input.value_changed.connect(func(_v): _update_coord_distance_preview())
+	_coord_z_input.value_changed.connect(func(_v): _update_coord_distance_preview())
+
+	# Spacer
+	var spacer2 := Control.new()
+	spacer2.custom_minimum_size = Vector2(0, 10)
+	vbox.add_child(spacer2)
+
+	# Buttons
+	var btn_hbox := HBoxContainer.new()
+	btn_hbox.add_theme_constant_override("separation", 10)
+	vbox.add_child(btn_hbox)
+
+	var engage_btn := Button.new()
+	engage_btn.text = "ENGAGE"
+	engage_btn.custom_minimum_size = Vector2(100, 35)
+	engage_btn.pressed.connect(_on_coord_engage)
+
+	var engage_style := StyleBoxFlat.new()
+	engage_style.bg_color = Color(0.15, 0.35, 0.15)
+	engage_style.corner_radius_top_left = 5
+	engage_style.corner_radius_top_right = 5
+	engage_style.corner_radius_bottom_left = 5
+	engage_style.corner_radius_bottom_right = 5
+	engage_btn.add_theme_stylebox_override("normal", engage_style)
+	engage_btn.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
+	btn_hbox.add_child(engage_btn)
+
+	var cancel_btn := Button.new()
+	cancel_btn.text = "CANCEL"
+	cancel_btn.custom_minimum_size = Vector2(100, 35)
+	cancel_btn.pressed.connect(func(): _coord_panel.visible = false)
+
+	var cancel_style := StyleBoxFlat.new()
+	cancel_style.bg_color = Color(0.2, 0.2, 0.2)
+	cancel_style.corner_radius_top_left = 5
+	cancel_style.corner_radius_top_right = 5
+	cancel_style.corner_radius_bottom_left = 5
+	cancel_style.corner_radius_bottom_right = 5
+	cancel_btn.add_theme_stylebox_override("normal", cancel_style)
+	btn_hbox.add_child(cancel_btn)
+
+func _update_coord_distance_preview() -> void:
+	if not _coord_panel or not ship:
+		return
+
+	var distance_label = _coord_panel.get_node_or_null("VBoxContainer/DistancePreview")
+	if not distance_label:
+		# Find it by traversing
+		for child in _coord_panel.get_children():
+			if child is VBoxContainer:
+				for subchild in child.get_children():
+					if subchild.name == "DistancePreview":
+						distance_label = subchild
+						break
+
+	if not distance_label:
+		return
+
+	var target := Vector3(_coord_x_input.value, _coord_y_input.value, _coord_z_input.value)
+	var fo = get_node_or_null("/root/FloatingOrigin")
+	var ship_universe_pos: Vector3 = ship.global_position
+	if fo and fo.has_method("world_to_universe"):
+		ship_universe_pos = fo.world_to_universe(ship.global_position)
+
+	var distance: float = ship_universe_pos.distance_to(target)
+	var distance_km: float = distance * 10.0  # At 100× scale: 1 unit = 10 km
+
+	if distance_km > 1000000000:
+		distance_label.text = "Distance: %.2f billion km" % (distance_km / 1000000000.0)
+	elif distance_km > 1000000:
+		distance_label.text = "Distance: %.2f million km" % (distance_km / 1000000.0)
+	else:
+		distance_label.text = "Distance: %.0f km" % distance_km
+
+func _on_coord_mode_impulse() -> void:
+	_coord_use_warp = false
+	_coord_impulse_container.visible = true
+	_coord_warp_container.visible = false
+	_update_coord_mode_styles()
+
+func _on_coord_mode_warp() -> void:
+	_coord_use_warp = true
+	_coord_impulse_container.visible = false
+	_coord_warp_container.visible = true
+	_update_coord_mode_styles()
+
+func _on_coord_impulse_selected(index: int) -> void:
+	_coord_impulse_speed = index
+	_update_coord_impulse_styles()
+
+func _update_coord_mode_styles() -> void:
+	if not _coord_mode_impulse or not _coord_mode_warp:
+		return
+
+	var impulse_style := StyleBoxFlat.new()
+	var warp_style := StyleBoxFlat.new()
+
+	if _coord_use_warp:
+		impulse_style.bg_color = Color(0.2, 0.2, 0.3)
+		warp_style.bg_color = lcars_purple
+		_coord_mode_impulse.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+		_coord_mode_warp.add_theme_color_override("font_color", Color.WHITE)
+	else:
+		impulse_style.bg_color = lcars_orange
+		warp_style.bg_color = Color(0.2, 0.2, 0.3)
+		_coord_mode_impulse.add_theme_color_override("font_color", Color.WHITE)
+		_coord_mode_warp.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+
+	for s in [impulse_style, warp_style]:
+		s.corner_radius_top_left = 3
+		s.corner_radius_top_right = 3
+		s.corner_radius_bottom_left = 3
+		s.corner_radius_bottom_right = 3
+
+	_coord_mode_impulse.add_theme_stylebox_override("normal", impulse_style)
+	_coord_mode_warp.add_theme_stylebox_override("normal", warp_style)
+
+func _update_coord_impulse_styles() -> void:
+	var impulse_names: Array[String] = ["1/4", "1/2", "3/4", "FULL"]
+	for i in range(_coord_impulse_buttons.size()):
+		var btn: Button = _coord_impulse_buttons[i]
+		var style := StyleBoxFlat.new()
+		style.corner_radius_top_left = 3
+		style.corner_radius_top_right = 3
+		style.corner_radius_bottom_left = 3
+		style.corner_radius_bottom_right = 3
+
+		if i == _coord_impulse_speed:
+			style.bg_color = lcars_orange
+			btn.add_theme_color_override("font_color", Color.WHITE)
+		else:
+			style.bg_color = Color(0.2, 0.2, 0.3)
+			btn.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+
+		btn.add_theme_stylebox_override("normal", style)
+
+func _on_coord_engage() -> void:
+	if not ship:
+		return
+
+	var target := Vector3(_coord_x_input.value, _coord_y_input.value, _coord_z_input.value)
+
+	# Convert target from universe coords to world coords
+	var fo = get_node_or_null("/root/FloatingOrigin")
+	var world_target: Vector3 = target
+	if fo and fo.has_method("universe_to_world"):
+		world_target = fo.universe_to_world(target)
+
+	# Set up autopilot
+	_autopilot_active = true
+	_autopilot_destination = world_target
+	_autopilot_last_distance = -1.0  # Reset distance tracking
+	_selected_destination = null  # No node target, just coordinates
+	_selected_destination_name = "%.0f, %.0f, %.0f" % [target.x, target.y, target.z]
+
+	if _coord_use_warp:
+		# Warp mode - align first, then engage warp
+		var warp_factor: float = _coord_warp_input.value
+		_autopilot_using_warp = true
+		_autopilot_aligning = true  # Must align before warp
+		_course_warp_factor = warp_factor
+		if warp_drive:
+			warp_drive.set_warp_factor(warp_factor)
+		print("Aligning to coordinates: ", target, " for Warp ", warp_factor)
+	else:
+		# Impulse mode - start immediately, turn while moving
+		_autopilot_using_warp = false
+		_autopilot_aligning = false
+		# Set impulse level: 0=1/4, 1=1/2, 2=3/4, 3=Full
+		var impulse_levels: Array = [
+			ShipController.ImpulseLevel.QUARTER,
+			ShipController.ImpulseLevel.HALF,
+			ShipController.ImpulseLevel.THREE_QUARTER,
+			ShipController.ImpulseLevel.FULL
+		]
+		ship.current_impulse = impulse_levels[_coord_impulse_speed]
+		ship._update_target_speed()
+		var speed_names: Array[String] = ["1/4", "1/2", "3/4", "Full"]
+		print("Course set to coordinates: ", target, " at ", speed_names[_coord_impulse_speed], " Impulse")
+
+	# Show disengage button
+	_show_disengage_button()
+
+	_coord_panel.visible = false

@@ -26,14 +26,17 @@ class_name SectorSolRealistic
 ##
 ## 4. The scene will automatically load them on startup
 ##
-## SCALE NOTES:
-## ============
-## - Orbital distances: 1 unit = 1000 km (REAL AU scale)
-##   * Earth at 149,600 units = 1 AU = 149.6 million km
-##   * Neptune at 4,498,000 units = 30 AU
-## - Planet/ship sizes: 250x scale for visibility
-##   * Earth radius: 1,595 units (real: 6,371 km)
-##   * Ship size: ~40 units
+## SCALE NOTES - UNIFORM 100× WORLD SCALE:
+## =======================================
+## Everything is scaled uniformly by WORLD_SCALE = 100.0:
+## - Orbital DISTANCES: real × 100 (Earth at 15M units)
+## - Planet/star RADII: real × 100 (Earth radius 637 units)
+## - Linear SPEEDS: real × 100 (Full impulse ~7,495 units/s)
+##
+## NOT SCALED: time, mass, angular rates
+##
+## This creates correct proportions at all scales while keeping
+## the floating origin system stable.
 ##
 ## FLOATING ORIGIN SYSTEM:
 ## =======================
@@ -41,7 +44,7 @@ class_name SectorSolRealistic
 ## precision errors at large distances. Key points:
 ##
 ## - The player ship ALWAYS stays near world origin (0,0,0)
-## - When the ship moves >50 units from origin, the entire universe shifts
+## - When the ship moves >50,000 units from origin, the entire universe shifts
 ## - All celestial bodies are children of _celestial_bodies node
 ## - _celestial_bodies is registered with FloatingOrigin autoload
 ## - Distance calculations use world positions (always valid)
@@ -64,21 +67,31 @@ class_name SectorSolRealistic
 
 const TEXTURE_BASE_PATH = "res://assets/textures/planets/"
 
-# SCALE SYSTEM:
-# - Orbital distances: 1 unit = 1000 km (1 AU = 149,600 units)
-# - Planet radii: 250x for visibility
-# - This hybrid approach keeps astronomical distances real
-#   while making ships and planets visible
+# =============================================================================
+# UNIFORM 100× WORLD SCALE
+# =============================================================================
+# All distances AND radii are scaled by 100×
+# Base: 1 unit = 1000 km, Scaled: 1 unit = 10 km
+# This creates correct proportions at all scales
+#
+# WORLD_SCALE is applied exactly ONCE to each value below.
+# =============================================================================
 
-# 1 AU in game units (1 unit = 1000 km)
-const AU: float = 149600.0
+const WORLD_SCALE: float = 100.0
+
+# 1 AU in scaled game units
+# Base: 149,597.87 units × 100 = 14,959,787 units
+const AU: float = 14960000.0
+
+# Warp arrival distance: 2 million km = 200,000 units at 100× scale
+const WARP_ARRIVAL_DISTANCE: float = 200000.0
 
 var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Sun",
 		"type": "star",
 		"distance": 0,
-		"radius": 20000,  # Reduced for gameplay (real 250x would be 174,000, engulfing Mercury)
+		"radius": 69600,      # 696,000 km × 100 / 1000 = 69,600
 		"texture": "2k_sun.jpg",
 		"rotation_speed": 0.001,
 		"emission": 5.0,
@@ -87,8 +100,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Mercury",
 		"type": "planet",
-		"distance": 57900,   # 0.387 AU = 57,909,050 km
-		"radius": 610,       # Real: 2,440 km × 250 / 1000 = 610
+		"distance": 5790000,   # 57,900,000 km × 100 / 1000 = 5,790,000 (0.387 AU)
+		"radius": 244,         # 2,440 km × 100 / 1000 = 244
 		"texture": "2k_mercury.jpg",
 		"rotation_speed": 0.002,
 		"color": Color(0.6, 0.55, 0.5),
@@ -98,8 +111,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Venus",
 		"type": "planet",
-		"distance": 108200,  # 0.723 AU = 108,208,000 km
-		"radius": 1515,      # Real: 6,052 km × 250 / 1000 = 1,513
+		"distance": 10820000,  # 108,200,000 km × 100 / 1000 = 10,820,000 (0.723 AU)
+		"radius": 605,         # 6,052 km × 100 / 1000 = 605
 		"texture": "2k_venus_surface.jpg",
 		"rotation_speed": -0.001,
 		"color": Color(0.9, 0.8, 0.6),
@@ -109,8 +122,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Earth",
 		"type": "earth",
-		"distance": 149600,  # 1.0 AU = 149,600,000 km
-		"radius": 1595,      # Real: 6,371 km × 250 / 1000 = 1,593
+		"distance": 14960000,  # 149,600,000 km × 100 / 1000 = 14,960,000 (1.0 AU)
+		"radius": 637,         # 6,371 km × 100 / 1000 = 637
 		"texture": "2k_earth_daymap.jpg",
 		"texture_night": "2k_earth_nightmap.jpg",
 		"texture_clouds": "2k_earth_clouds.jpg",
@@ -123,8 +136,8 @@ var planet_configs: Array[Dictionary] = [
 		"name": "Moon",
 		"type": "moon",
 		"parent": "Earth",
-		"distance": 3000,    # Outside Earth's visual radius (1595) + margin
-		"radius": 435,       # Real: 1,737 km × 250 / 1000 = 434
+		"distance": 38440,     # 384,400 km × 100 / 1000 = 38,440
+		"radius": 174,         # 1,737 km × 100 / 1000 = 174
 		"texture": "2k_moon.jpg",
 		"rotation_speed": 0.005,
 		"color": Color(0.75, 0.75, 0.75),
@@ -135,8 +148,8 @@ var planet_configs: Array[Dictionary] = [
 		"name": "Starbase 1",
 		"type": "starbase",
 		"parent": "Earth",
-		"distance": 2200,    # Between Earth surface (1595) and Moon (3000)
-		"radius": 125,
+		"distance": 4000,      # ~40,000 km orbit × 100 / 1000 = 4,000
+		"radius": 100,         # Scaled up for visibility
 		"rotation_speed": 0.003,
 		"orbital_angle": 2.0,
 		"orbital_speed": 0.006,
@@ -145,8 +158,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Mars",
 		"type": "planet",
-		"distance": 227900,  # 1.524 AU = 227,939,200 km
-		"radius": 850,       # Real: 3,390 km × 250 / 1000 = 848
+		"distance": 22790000,  # 227,900,000 km × 100 / 1000 = 22,790,000 (1.524 AU)
+		"radius": 339,         # 3,390 km × 100 / 1000 = 339
 		"texture": "2k_mars.jpg",
 		"rotation_speed": 0.009,
 		"color": Color(0.85, 0.45, 0.25),
@@ -157,8 +170,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Jupiter",
 		"type": "planet",
-		"distance": 778300,  # 5.203 AU = 778,299,000 km
-		"radius": 17475,     # Real: 69,911 km × 250 / 1000 = 17,478
+		"distance": 77850000,  # 778,500,000 km × 100 / 1000 = 77,850,000 (5.203 AU)
+		"radius": 6991,        # 69,911 km × 100 / 1000 = 6,991
 		"texture": "2k_jupiter.jpg",
 		"rotation_speed": 0.02,
 		"color": Color(0.85, 0.8, 0.7),
@@ -169,8 +182,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Saturn",
 		"type": "saturn",
-		"distance": 1427000, # 9.537 AU = 1,426,666,000 km
-		"radius": 14525,     # Real: 58,232 km × 250 / 1000 = 14,558
+		"distance": 143200000, # 1,432,000,000 km × 100 / 1000 = 143,200,000 (9.537 AU)
+		"radius": 5823,        # 58,232 km × 100 / 1000 = 5,823
 		"texture": "2k_saturn.jpg",
 		"texture_ring": "2k_saturn_ring_alpha.png",
 		"rotation_speed": 0.018,
@@ -184,8 +197,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Uranus",
 		"type": "planet",
-		"distance": 2871000, # 19.19 AU = 2,870,658,000 km
-		"radius": 6365,      # Real: 25,362 km × 250 / 1000 = 6,341
+		"distance": 287100000, # 2,871,000,000 km × 100 / 1000 = 287,100,000 (19.19 AU)
+		"radius": 2536,        # 25,362 km × 100 / 1000 = 2,536
 		"texture": "2k_uranus.jpg",
 		"rotation_speed": -0.015,
 		"color": Color(0.6, 0.85, 0.9),
@@ -196,8 +209,8 @@ var planet_configs: Array[Dictionary] = [
 	{
 		"name": "Neptune",
 		"type": "planet",
-		"distance": 4498000, # 30.07 AU = 4,498,396,000 km
-		"radius": 6175,      # Real: 24,622 km × 250 / 1000 = 6,156
+		"distance": 449800000, # 4,498,000,000 km × 100 / 1000 = 449,800,000 (30.07 AU)
+		"radius": 2462,        # 24,622 km × 100 / 1000 = 2,462
 		"texture": "2k_neptune.jpg",
 		"rotation_speed": 0.016,
 		"color": Color(0.3, 0.5, 0.9),
@@ -218,11 +231,13 @@ var _player_spawn: Marker3D
 var _celestial_bodies: Node3D  # Container for all planets/stations (registered with FloatingOrigin)
 var _player_ship: Node3D       # Reference to player ship
 
+
 @export_group("Spawn Settings")
-## Spawn outside Earth's radius (1595 units) + buffer for clear view of planet
-## Moon is at 385 units, Starbase at 250 units from Earth
-@export var spawn_distance_from_earth: float = 3000.0
-@export var spawn_height: float = 500.0
+## At 100× scale: Earth radius = 637 units
+## Spawn ~1600 units from Earth center (~960 above surface)
+## Moon at 38,440 units, Starbase at 4,000 units from Earth
+@export var spawn_distance_from_earth: float = 1600.0
+@export var spawn_height: float = 400.0
 
 func _ready() -> void:
 	_setup_environment()
@@ -231,6 +246,7 @@ func _ready() -> void:
 	_setup_player_spawn()
 	_position_player_ship()
 	_setup_floating_origin()
+	_create_debug_objects()  # DEBUG: Add visible test objects
 
 	print("=== SECTOR 001: SOL SYSTEM (REALISTIC) ===")
 	print("    Textures expected at: ", TEXTURE_BASE_PATH)
@@ -333,17 +349,28 @@ func _create_body(config: Dictionary) -> Node3D:
 		# Store initial orbital angle
 		_orbital_angles[body_name] = angle
 
-		# Position body (moon handled differently)
-		if body_type != "moon":
+		# Position body (moons and starbases orbit their parent, not the Sun)
+		if body_type != "moon" and body_type != "starbase":
 			var distance: float = config.get("distance", 0)
 			body.position = Vector3(
 				sin(angle) * distance,
 				0,
 				cos(angle) * distance
 			)
+		else:
+			# Position moons/starbases relative to their parent immediately
+			var parent_name: String = config.get("parent", "")
+			if parent_name != "" and _planets.has(parent_name):
+				var parent: Node3D = _planets[parent_name]
+				var orbit_distance: float = config.get("distance", 600)
+				body.position = parent.position + Vector3(
+					sin(angle) * orbit_distance,
+					0,
+					cos(angle) * orbit_distance
+				)
 
 		body.name = body_name
-		print("  Created: ", body_name, " at distance ", config.get("distance", 0))
+		print("  Created: ", body_name, " at distance ", config.get("distance", 0), " type: ", body_type)
 
 	return body
 
@@ -688,12 +715,13 @@ func _setup_player_spawn() -> void:
 		var earth: Node3D = _planets["Earth"]
 		var earth_pos: Vector3 = earth.position
 
-		# Spawn above Earth (Y axis) to avoid Moon's orbital plane
-		# Moon orbits at 4000 units in XZ plane, so spawning on Y avoids collision
-		var spawn_pos: Vector3 = earth_pos + Vector3(spawn_distance_from_earth * 0.7, spawn_height + 2000, spawn_distance_from_earth * 0.7)
+		# Spawn above Earth - close enough to see it clearly
+		# Earth radius is 637 at 100× scale, spawn ~1600 units from center
+		var spawn_pos: Vector3 = earth_pos + Vector3(spawn_distance_from_earth * 0.5, spawn_height + 800, spawn_distance_from_earth * 0.5)
 
 		_player_spawn.position = spawn_pos
-		# Face toward Earth
+		# Add to tree first, then look_at (requires being in tree)
+		add_child(_player_spawn)
 		_player_spawn.look_at(earth_pos, Vector3.UP)
 
 		print("=== SPAWN SETUP ===")
@@ -703,37 +731,23 @@ func _setup_player_spawn() -> void:
 		# Fallback spawn at origin area
 		_player_spawn.position = Vector3(0, 500, 5000)
 		print("  No Earth found, spawning at fallback position")
-
-	add_child(_player_spawn)
+		add_child(_player_spawn)
 
 func _position_player_ship() -> void:
 	_player_ship = get_node_or_null("Starship")
 	if _player_ship:
-		# FLOATING ORIGIN SETUP:
-		# Instead of moving ship to spawn point, we:
-		# 1. Keep ship at origin (0,0,0)
-		# 2. Offset the entire universe so spawn point is at origin
-
 		var spawn_transform: Transform3D = _player_spawn.global_transform
-		var universe_offset: Vector3 = spawn_transform.origin
 
-		# Ship stays at origin, facing the right direction
+		# DEBUG: Check if floating origin debug mode is active
+		# Ship starts at origin, CelestialBodies is offset to bring spawn point to origin
+		var universe_offset: Vector3 = spawn_transform.origin
 		_player_ship.global_position = Vector3.ZERO
 		_player_ship.global_transform.basis = spawn_transform.basis
-
-		# Offset all celestial bodies so spawn point is now at origin
 		_celestial_bodies.global_position = -universe_offset
 
 		print("=== SHIP POSITIONED (FLOATING ORIGIN) ===")
-		print("  Universe offset: ", universe_offset)
-		print("  Ship at origin: ", _player_ship.global_position)
-		print("  Ship rotation: ", _player_ship.global_rotation_degrees)
-		print("  CelestialBodies offset: ", _celestial_bodies.global_position)
 
-		# Print ship children to verify model loader
-		print("  Ship children: ", _player_ship.get_child_count())
-		for child in _player_ship.get_children():
-			print("    - ", child.name, " (", child.get_class(), ")")
+		print("  CelestialBodies position: ", _celestial_bodies.global_position)
 	else:
 		print("ERROR: Could not find Starship node!")
 
@@ -744,16 +758,15 @@ func _setup_floating_origin() -> void:
 		# Register the player ship
 		fo.set_player_ship(_player_ship)
 
-		# Register the celestial bodies container
-		# When origin shifts, this entire node (and all children) will be moved
+		# Register celestial bodies container - it will be shifted with origin
 		fo.register_world_object(_celestial_bodies)
 
 		# Set the initial world offset to match where we spawned
-		# This is the "true" universe position of the origin
 		fo.world_offset = _player_spawn.global_transform.origin
 
 		print("=== FLOATING ORIGIN CONFIGURED ===")
 		print("  Initial world offset: ", fo.world_offset)
+		print("  Registered CelestialBodies for shifting")
 	else:
 		push_warning("FloatingOrigin autoload not found or missing references!")
 
@@ -785,7 +798,7 @@ func _process(delta: float) -> void:
 					cos(angle) * orbit_distance
 				)
 		else:
-			# Standard orbit around Sun (origin)
+			# Standard orbit around Sun (origin of CelestialBodies)
 			var distance: float = config.get("distance", 0)
 			if distance > 0:
 				planet.position = Vector3(
@@ -809,6 +822,12 @@ func get_player_spawn_transform() -> Transform3D:
 
 func get_planet(planet_name: String) -> Node3D:
 	return _planets.get(planet_name, null)
+
+func _get_config_for_planet(planet_name: String) -> Dictionary:
+	for config in planet_configs:
+		if config.get("name") == planet_name:
+			return config
+	return {}
 
 func get_all_planets() -> Dictionary:
 	return _planets
@@ -843,3 +862,66 @@ func get_distance_to_planet(planet_name: String) -> float:
 ## Get the Sun's position in universe coordinates (always at 0,0,0)
 func get_sun_universe_position() -> Vector3:
 	return Vector3.ZERO  # Sun is at universe origin by definition
+
+# =============================================================================
+# DEBUG: Test visibility with simple objects
+# =============================================================================
+
+func _create_debug_objects() -> void:
+	# DEBUG: Rendering confirmed working - disabling debug objects
+	# To re-enable, set this to false:
+	var skip_debug := true
+	if skip_debug:
+		print("=== DEBUG OBJECTS SKIPPED (rendering confirmed working) ===")
+		return
+
+	print("=== CREATING DEBUG OBJECTS ===")
+
+	# Create a bright red sphere 100 units in front of the ship
+	var debug_sphere_front := _create_debug_sphere(Color.RED, 10.0)
+	debug_sphere_front.name = "DEBUG_FRONT"
+	add_child(debug_sphere_front)
+	debug_sphere_front.global_position = Vector3(0, 0, -100)  # In front of ship
+	print("  Red sphere at (0, 0, -100) - should be in front of ship")
+
+	# Create a green sphere 100 units to the right
+	var debug_sphere_right := _create_debug_sphere(Color.GREEN, 10.0)
+	debug_sphere_right.name = "DEBUG_RIGHT"
+	add_child(debug_sphere_right)
+	debug_sphere_right.global_position = Vector3(100, 0, 0)
+	print("  Green sphere at (100, 0, 0) - to the right")
+
+	# Create a blue sphere 100 units up
+	var debug_sphere_up := _create_debug_sphere(Color.BLUE, 10.0)
+	debug_sphere_up.name = "DEBUG_UP"
+	add_child(debug_sphere_up)
+	debug_sphere_up.global_position = Vector3(0, 100, 0)
+	print("  Blue sphere at (0, 100, 0) - above ship")
+
+	# Create a yellow sphere at Earth's position (should be visible)
+	if _planets.has("Earth"):
+		var earth: Node3D = _planets["Earth"]
+		var debug_at_earth := _create_debug_sphere(Color.YELLOW, 500.0)
+		debug_at_earth.name = "DEBUG_AT_EARTH"
+		add_child(debug_at_earth)
+		debug_at_earth.global_position = earth.global_position
+		print("  Yellow sphere at Earth's position: ", earth.global_position)
+
+	print("=== DEBUG OBJECTS CREATED ===")
+	print("  If you can see colored spheres, rendering works!")
+	print("  If you only see the sky, there's a camera/positioning issue")
+
+func _create_debug_sphere(color: Color, radius: float) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = radius
+	sphere.height = radius * 2.0
+	mesh_instance.mesh = sphere
+
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	mesh_instance.material_override = mat
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+	return mesh_instance

@@ -35,6 +35,9 @@ func _load_selected_ship() -> void:
 			child.queue_free()
 
 	# Load the new model
+	print("=== SHIP MODEL LOADER ===")
+	print("  Model path: ", model_path)
+	print("  Exists: ", ResourceLoader.exists(model_path))
 	if ResourceLoader.exists(model_path):
 		var model_scene: PackedScene = load(model_path)
 		if model_scene:
@@ -48,9 +51,12 @@ func _load_selected_ship() -> void:
 			var aabb := _get_node_aabb(_current_model)
 			var max_dim: float = max(aabb.size.x, max(aabb.size.y, aabb.size.z))
 
-			# Target size - 250x scale (real Enterprise-D is 642m = 0.642km)
-			# At 250x: 160.5 km = ~40 units (1 unit ≈ 4 km)
-			var target_size: float = 40.0
+			print("  Model AABB: ", aabb)
+			print("  Max dimension: ", max_dim)
+
+			# Target size - 100x scale (real Enterprise-D is 642m = 0.642km)
+			# At 100x: 160 km = ~16 units (1 unit = 10 km)
+			var target_size: float = 16.0
 			if max_dim > 0:
 				var scale_factor: float = target_size / max_dim
 				# Apply custom scale from ship data
@@ -58,11 +64,18 @@ func _load_selected_ship() -> void:
 				if global_ship and not global_ship.selected_ship_data.is_empty():
 					custom_scale = global_ship.selected_ship_data.get("scale", 1.0)
 				_current_model.scale = Vector3.ONE * scale_factor * custom_scale
+				print("  Scale factor: ", scale_factor)
+				print("  Custom scale: ", custom_scale)
+				print("  Final scale: ", _current_model.scale)
 
 			add_child(_current_model)
-			print("Loaded ship model: ", model_file)
+			print("  Ship model loaded successfully: ", model_file)
+			print("  Model children: ", _current_model.get_child_count())
+		else:
+			print("  ERROR: Failed to instantiate model scene!")
 	else:
 		push_warning("Ship model not found: " + model_path)
+		print("  ERROR: Model file not found!")
 		# Fallback to default
 		if model_file != default_model:
 			var fallback_path: String = MODELS_PATH + default_model

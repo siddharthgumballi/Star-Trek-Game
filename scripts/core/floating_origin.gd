@@ -11,10 +11,10 @@ class_name FloatingOriginClass
 ##   - Animation glitches
 ##   - Camera stuttering
 ##
-## At 1 unit = 1000 km scale:
-##   - Earth is at 149,600 units (1 AU) from Sun
-##   - Neptune is at 4,498,000 units from Sun
-##   - Float precision breaks down around 100,000+ units
+## At 100× world scale (1 unit = 10 km effective):
+##   - Earth is at ~15 million units (1 AU × 100) from Sun
+##   - Neptune is at ~450 million units from Sun
+##   - Float precision breaks down around 100,000+ units from origin
 ##
 ## THE SOLUTION:
 ## =============
@@ -48,9 +48,10 @@ class_name FloatingOriginClass
 
 signal origin_shifted(offset: Vector3)
 
-## Distance threshold before origin reset triggers (in game units)
-## 50 units = 50,000 km - well within float precision safe zone
-const ORIGIN_RESET_DISTANCE: float = 50.0
+## Distance threshold before origin reset triggers (in scaled game units)
+## At 100× scale: 1 unit = 10 km, so 50K units = 500,000 km
+## This triggers before exceeding camera far plane (600K units)
+const ORIGIN_RESET_DISTANCE: float = 50000.0  # 50K units = 500,000 km
 
 ## Accumulated world offset - the "true" position of world origin
 ## Add this to any object's local position to get its "universe" position
@@ -69,7 +70,7 @@ var last_shift_offset: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	print("=== FLOATING ORIGIN SYSTEM INITIALIZED ===")
-	print("  Reset threshold: ", ORIGIN_RESET_DISTANCE, " units (", ORIGIN_RESET_DISTANCE * 1000, " km)")
+	print("  Reset threshold: ", ORIGIN_RESET_DISTANCE, " units")
 	print("  Press F12 to toggle floating origin debug display")
 
 func _input(event: InputEvent) -> void:
@@ -77,9 +78,25 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F12:
 		debug_print_state()
 
+## Set to true to disable origin shifting for debugging
+var debug_disable_shifting: bool = false  # Visibility confirmed - floating origin enabled
+var _confirmed_active: bool = false  # One-time confirmation print
+
 func _physics_process(_delta: float) -> void:
+	if debug_disable_shifting:
+		return  # Skip all origin shifting for debug
 	if not player_ship or not is_instance_valid(player_ship):
 		return
+	if not player_ship.is_inside_tree():
+		return
+
+	# One-time confirmation that floating origin is monitoring
+	if not _confirmed_active and _world_objects.size() > 0:
+		_confirmed_active = true
+		print("=== FLOATING ORIGIN ACTIVE ===")
+		print("  Monitoring ship distance from origin")
+		print("  Threshold: ", ORIGIN_RESET_DISTANCE, " units (", ORIGIN_RESET_DISTANCE * 10, " km)")
+		print("  World objects registered: ", _world_objects.size())
 
 	# Check if player has moved too far from origin
 	var distance_from_origin: float = player_ship.global_position.length()

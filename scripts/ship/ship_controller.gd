@@ -18,9 +18,10 @@ class_name ShipController
 @export var center_of_mass_offset: Vector3 = Vector3(0, 0, -20)
 
 @export_group("Impulse Speeds")
-## Full impulse = 0.25c = 74,948 km/s. At scale 1 unit = 1000 km, this is ~75 units/s
-@export var full_impulse_speed: float = 75.0  # 0.25c in game units
-@export var impulse_acceleration: float = 15.0  # Smooth acceleration
+## Full impulse = 0.25c, scaled by WORLD_SCALE (100×)
+## Base: 75 units/s × 100 = 7,495 units/s
+@export var full_impulse_speed: float = 7495.0
+@export var impulse_acceleration: float = 15.0  # Smooth acceleration (not scaled - it's a rate)
 
 @export_group("Rotation Limits (rad/sec)")
 @export var max_pitch_rate: float = 0.12
