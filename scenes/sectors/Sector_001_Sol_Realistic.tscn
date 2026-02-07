@@ -43,10 +43,10 @@ script = ExtResource("9_bridge")
 script = ExtResource("7_camera")
 target_ship_path = NodePath("../Starship")
 bridge_interior_path = NodePath("../BridgeInterior")
-external_distance = 80.0
-external_height = 25.0
-zoom_min = 30.0
-zoom_max = 1000.0
+external_distance = 4.0
+external_height = 1.0
+zoom_min = 2.0
+zoom_max = 300.0
 
 [node name="MainCamera" type="Camera3D" parent="CameraManager"]
 current = true

@@ -16,11 +16,11 @@ var target_ship: Node3D
 var bridge_interior: BridgeInterior
 
 @export_group("External Camera")
-@export var external_distance: float = 18.0
-@export var external_height: float = 2.0
-@export var zoom_min: float = 8.0
+@export var external_distance: float = 4.0
+@export var external_height: float = 1.0
+@export var zoom_min: float = 2.0
 @export var zoom_max: float = 300.0
-@export var zoom_speed: float = 5.0
+@export var zoom_speed: float = 2.0
 
 @export_group("Bridge Camera")
 @export var bridge_offset: Vector3 = Vector3(0, 8, -40)
@@ -52,7 +52,7 @@ var _free_pitch: float = 0.0
 var _free_zoom: float = 1.0
 
 # Zoom state
-var _current_zoom: float = 18.0
+var _current_zoom: float = 4.0
 
 var _initialized: bool = false
 var _frames_waited: int = 0

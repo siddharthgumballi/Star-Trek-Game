@@ -742,7 +742,17 @@ func _position_player_ship() -> void:
 		# Ship starts at origin, CelestialBodies is offset to bring spawn point to origin
 		var universe_offset: Vector3 = spawn_transform.origin
 		_player_ship.global_position = Vector3.ZERO
-		_player_ship.global_transform.basis = spawn_transform.basis
+
+		# Calculate yaw-only rotation (0 pitch, 0 roll) facing toward Earth
+		var earth_pos: Vector3 = _planets["Earth"].position if _planets.has("Earth") else Vector3.ZERO
+		var to_earth: Vector3 = earth_pos - spawn_transform.origin
+		to_earth.y = 0  # Flatten to horizontal plane
+		if to_earth.length() > 0.1:
+			var yaw: float = atan2(to_earth.x, to_earth.z)
+			_player_ship.rotation = Vector3(0, yaw, 0)  # Pitch=0, Yaw=toward Earth, Roll=0
+		else:
+			_player_ship.rotation = Vector3.ZERO
+
 		_celestial_bodies.global_position = -universe_offset
 
 		print("=== SHIP POSITIONED (FLOATING ORIGIN) ===")

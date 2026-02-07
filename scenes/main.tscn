@@ -61,8 +61,10 @@ script = ExtResource("9_bridge")
 script = ExtResource("6_camera")
 target_ship_path = NodePath("../Starship")
 bridge_interior_path = NodePath("../BridgeInterior")
-external_distance = 500.0
-external_height = 150.0
+external_distance = 4.0
+external_height = 1.0
+zoom_min = 2.0
+zoom_max = 300.0
 bridge_offset = Vector3(0, 8, -40)
 
 [node name="LCARSHUD" type="Control" parent="."]
