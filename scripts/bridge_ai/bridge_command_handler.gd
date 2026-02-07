@@ -1,17 +1,20 @@
 extends Node
 class_name BridgeCommandHandler
-## Handles incoming Bridge AI commands and routes them through LCARS HUD autopilot
+## Handles incoming Bridge AI commands and routes them through StarshipCore
+## Falls back to direct HUD control if core is unavailable
 
 @export var ship_path: NodePath
 @export var warp_drive_path: NodePath
 @export var hud_path: NodePath
+@export var starship_core_path: NodePath
 
 var ship: Node3D
 var warp_drive: Node3D
 var hud: Control  # LCARSHUD
 var receiver: Node  # BridgeAIReceiver
+var starship_core: Node  # StarshipCore
 
-# Memory for contextual commands
+# Memory for contextual commands (fallback mode)
 var last_destination: String = ""
 var last_warp_factor: float = 5.0
 
@@ -20,18 +23,40 @@ func _ready() -> void:
 	ship = get_node_or_null(ship_path) if ship_path else null
 	warp_drive = get_node_or_null(warp_drive_path) if warp_drive_path else null
 	hud = get_node_or_null(hud_path) if hud_path else null
+	starship_core = get_node_or_null(starship_core_path) if starship_core_path else null
+
+	# Fallback: find StarshipCore in scene tree
+	if not starship_core:
+		starship_core = _find_starship_core()
 
 	# Connect to BridgeAIReceiver
 	receiver = get_node_or_null("../BridgeAIReceiver")
 	if receiver:
 		receiver.command_received.connect(_on_command_received)
 		print("[BRIDGE HANDLER] Connected to BridgeAIReceiver")
-		if hud:
-			print("[BRIDGE HANDLER] HUD connected - using autopilot system")
+		if starship_core:
+			print("[BRIDGE HANDLER] StarshipCore connected - using modular routing")
+		elif hud:
+			print("[BRIDGE HANDLER] HUD connected - using direct autopilot (fallback)")
 		else:
-			push_warning("[BRIDGE HANDLER] HUD not found - voice commands may not work")
+			push_warning("[BRIDGE HANDLER] No routing available - voice commands may not work")
 	else:
 		push_warning("BridgeCommandHandler: Could not find BridgeAIReceiver")
+
+func _find_starship_core() -> Node:
+	"""Find StarshipCore in the scene tree."""
+	var root: Node = get_tree().current_scene
+	return _find_node_recursive(root, "StarshipCore")
+
+func _find_node_recursive(node: Node, class_name_str: String) -> Node:
+	var script: Script = node.get_script()
+	if script and script.get_global_name() == class_name_str:
+		return node
+	for child in node.get_children():
+		var result: Node = _find_node_recursive(child, class_name_str)
+		if result:
+			return result
+	return null
 
 func _on_command_received(cmd: Dictionary) -> void:
 	if not cmd:
@@ -43,7 +68,18 @@ func _on_command_received(cmd: Dictionary) -> void:
 
 	print("[BRIDGE HANDLER] Received: ", intent, " from ", department)
 
-	# Route command based on intent
+	# Route through StarshipCore if available
+	if starship_core and starship_core.has_method("route_command"):
+		var result: Dictionary = starship_core.route_command(cmd)
+		var success: bool = result.get("success", false)
+		var message: String = result.get("message", "Command processed")
+		_send_response(success, message)
+		if success and hud and hud.has_method("show_computer_message"):
+			hud.show_computer_message(message)
+		return
+
+	# Fallback: Route command based on intent (legacy mode)
+	print("[BRIDGE HANDLER] Using fallback routing (no StarshipCore)")
 	match intent:
 		"impulse":
 			_handle_impulse(cmd)
@@ -67,6 +103,16 @@ func _on_command_received(cmd: Dictionary) -> void:
 			_handle_disengage()
 		"status":
 			_handle_status()
+		"red_alert":
+			_handle_alert("red")
+		"yellow_alert":
+			_handle_alert("yellow")
+		"green_alert", "stand_down", "cancel_alert":
+			_handle_alert("green")
+		"damage_report":
+			_handle_damage_report()
+		"scan", "scan_target":
+			_handle_scan(cmd)
 		"":
 			_send_response(false, "No command intent specified")
 		_:
@@ -242,6 +288,43 @@ func _handle_status() -> void:
 	_send_response(true, status_msg)
 	if hud and hud.has_method("show_computer_message"):
 		hud.show_computer_message(status_msg)
+
+func _handle_alert(level: String) -> void:
+	# Fallback alert handling when StarshipCore is not available
+	var message: String
+	match level:
+		"red":
+			message = "Red alert! All hands to battle stations!"
+		"yellow":
+			message = "Yellow alert. Increased readiness."
+		_:
+			message = "Standing down from alert status."
+
+	print("[BRIDGE HANDLER] Alert: ", level)
+	_send_response(true, message)
+	if hud and hud.has_method("show_computer_message"):
+		hud.show_computer_message(message)
+
+func _handle_damage_report() -> void:
+	# Fallback damage report when StarshipCore is not available
+	var message: String = "All systems operational."
+	_send_response(true, message)
+	if hud and hud.has_method("show_computer_message"):
+		hud.show_computer_message(message)
+
+func _handle_scan(cmd: Dictionary) -> void:
+	# Fallback scan handling when StarshipCore is not available
+	var target = cmd.get("target")
+	var target_str: String = str(target) if target != null else ""
+
+	if target_str.is_empty() or target_str == "null":
+		_send_response(false, "No scan target specified")
+		return
+
+	var message: String = "Scanning %s. Analysis in progress." % target_str
+	_send_response(true, message)
+	if hud and hud.has_method("show_computer_message"):
+		hud.show_computer_message(message)
 
 # =============================================================================
 # RESPONSE HANDLING

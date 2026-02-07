@@ -200,26 +200,32 @@ func _read_input() -> void:
 		current_impulse = ImpulseLevel.STOP
 		target_speed = 0.0
 
-	# Pitch (W/S)
+	# Check if Shift is held (used for other commands like Warp)
+	var shift_held: bool = Input.is_key_pressed(KEY_SHIFT)
+
+	# Pitch (W/S) - only when Shift is NOT held
 	_pitch_input = 0.0
-	if Input.is_action_pressed("pitch_up"):
-		_pitch_input = 1.0
-	elif Input.is_action_pressed("pitch_down"):
-		_pitch_input = -1.0
+	if not shift_held:
+		if Input.is_action_pressed("pitch_up"):
+			_pitch_input = 1.0
+		elif Input.is_action_pressed("pitch_down"):
+			_pitch_input = -1.0
 
-	# Yaw (A/D)
+	# Yaw (A/D) - only when Shift is NOT held
 	_turn_input = 0.0
-	if Input.is_action_pressed("turn_left"):
-		_turn_input = -1.0
-	elif Input.is_action_pressed("turn_right"):
-		_turn_input = 1.0
+	if not shift_held:
+		if Input.is_action_pressed("turn_left"):
+			_turn_input = -1.0
+		elif Input.is_action_pressed("turn_right"):
+			_turn_input = 1.0
 
-	# Roll (Z/C)
+	# Roll (Z/C) - only when Shift is NOT held
 	_roll_input = 0.0
-	if Input.is_action_pressed("roll_left"):
-		_roll_input = -1.0
-	elif Input.is_action_pressed("roll_right"):
-		_roll_input = 1.0
+	if not shift_held:
+		if Input.is_action_pressed("roll_left"):
+			_roll_input = -1.0
+		elif Input.is_action_pressed("roll_right"):
+			_roll_input = 1.0
 
 func _do_impulse_movement(delta: float) -> void:
 	actual_speed = lerpf(actual_speed, target_speed, impulse_acceleration * delta / 100.0)

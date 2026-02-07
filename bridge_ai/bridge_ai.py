@@ -4,23 +4,23 @@
 STAR TREK BRIDGE AI - Voice Command System
 =============================================================================
 
-This script creates a fully offline voice command system for a Star Trek game.
+This script creates a voice command system for a Star Trek game.
 It listens to your voice, understands what you're saying, and sends structured
 commands to the Godot game engine.
 
 ARCHITECTURE:
-    Microphone → Whisper (speech-to-text) → Ollama (intent parsing) → TCP → Godot
+    Microphone → Whisper (speech-to-text) → Gemini (intent parsing) → TCP → Godot
 
 REQUIREMENTS:
-    pip install pyaudio numpy ollama
+    pip install pyaudio numpy google-generativeai
 
     You also need:
-    - Whisper.cpp installed with the medium.en model
-    - Ollama installed and running locally
-    - A model pulled in Ollama (e.g., `ollama pull llama3.2` or `ollama pull mistral`)
+    - Whisper.cpp installed with the base.en model
+    - Google Gemini API key (free tier: 1,500 requests/day)
+      Get one at: https://aistudio.google.com/apikey
 
 USAGE:
-    1. Start Ollama: `ollama serve`
+    1. Set GEMINI_API_KEY environment variable
     2. Start your Godot game (with TCP listener enabled)
     3. Run this script: `python bridge_ai.py`
     4. Speak commands like "Helm, set course for Mars, warp factor 5"
@@ -62,9 +62,8 @@ class Config:
     # Common paths: macOS Homebrew: /usr/local/bin/whisper-cpp or /opt/homebrew/bin/whisper-cpp
     # If you built from source, it might be: ~/whisper.cpp/main
 
-    # Ollama Settings
-    OLLAMA_MODEL = "tinyllama"  # Local LLM model (change to your installed model)
-    OLLAMA_HOST = "http://localhost:11434"  # Default Ollama server
+    # Gemini Settings
+    GEMINI_MODEL = "gemini-2.5-flash"  # Fast and free tier available
 
     # Audio Settings
     SAMPLE_RATE = 16000       # 16kHz - required by Whisper
@@ -92,17 +91,34 @@ class Department(Enum):
 
 class Intent(Enum):
     """Valid command intents (what action to take)."""
-    NAVIGATE = "navigate"      # Set course to destination
+    # Navigation / Helm
+    NAVIGATE = "navigate"              # Set course to destination
     NAVIGATE_COORDINATES = "navigate_coordinates"  # Navigate to coordinates
-    WARP = "warp"              # Engage warp drive
-    IMPULSE = "impulse"        # Set impulse speed
-    STOP = "stop"              # All stop
-    TURN = "turn"              # Turn/rotate ship
+    WARP = "warp"                      # Change warp speed (no destination)
+    IMPULSE = "impulse"                # Set impulse speed
+    STOP = "stop"                      # All stop / full stop
+    DISENGAGE = "disengage"            # Disengage autopilot/warp
+    ORBIT = "orbit"                    # Enter orbit around target
+    REVERSE = "reverse"                # Reverse course/engines
+    TURN = "turn"                      # Turn/rotate ship
+    EVASIVE = "evasive"                # Evasive maneuvers
+    DOCK = "dock"                      # Dock with station
+    LAND = "land"                      # Land on planet
+
+    # Tactical
     RAISE_SHIELDS = "raise_shields"
     LOWER_SHIELDS = "lower_shields"
-    ORBIT = "orbit"            # Enter orbit around target
-    DISENGAGE = "disengage"    # Disengage autopilot/warp
-    STATUS = "status"          # Report ship status
+    RED_ALERT = "red_alert"
+    YELLOW_ALERT = "yellow_alert"
+    GREEN_ALERT = "green_alert"
+    FIRE = "fire"                      # Fire weapons
+
+    # Operations
+    STATUS = "status"                  # Ship status report
+    DAMAGE_REPORT = "damage_report"    # Damage report
+    SCAN = "scan"                      # Scan target
+    HAIL = "hail"                      # Hail target
+    VIEWSCREEN = "viewscreen"          # On screen
 
 
 @dataclass
@@ -189,11 +205,14 @@ class CommandMemory:
         if command.impulse_percent is not None:
             self.last_impulse = command.impulse_percent
 
-        if command.intent == Intent.WARP.value:
-            self.at_warp = True
-        elif command.intent in [Intent.STOP.value, Intent.IMPULSE.value]:
+        # Track warp state
+        if command.intent in [Intent.WARP.value, Intent.NAVIGATE.value]:
+            if command.warp_factor:
+                self.at_warp = True
+        elif command.intent in [Intent.STOP.value, Intent.IMPULSE.value, Intent.DISENGAGE.value, Intent.ORBIT.value]:
             self.at_warp = False
 
+        # Track shield state
         if command.intent == Intent.RAISE_SHIELDS.value:
             self.shields_raised = True
         elif command.intent == Intent.LOWER_SHIELDS.value:
@@ -477,91 +496,432 @@ class WhisperTranscriber:
 
 
 # =============================================================================
-# INTENT PARSER - Convert text to structured commands using Ollama
+# INTENT PARSER - Convert text to structured commands using Google Gemini
+# =============================================================================
+#
+# ROLLBACK TO OLLAMA (for offline mode):
+# To switch back to local Ollama instead of Gemini:
+# 1. pip install ollama
+# 2. In Config class, replace GEMINI_MODEL with:
+#    OLLAMA_MODEL = "tinyllama"
+#    OLLAMA_HOST = "http://localhost:11434"
+# 3. Replace _init_gemini() with Ollama connection test
+# 4. Replace generate_content() call with ollama.chat()
+# 5. Start Ollama with: ollama serve
+#
+# NOTE: Model names change over time. If you get a 404 error, check
+# https://ai.google.dev/gemini-api/docs/models for current model names.
 # =============================================================================
 
 class IntentParser:
     """
-    Parses natural language commands into structured JSON using Ollama.
+    Parses natural language commands into structured JSON using Google Gemini.
 
-    Ollama runs large language models locally on your machine, ensuring
-    complete privacy and offline operation.
+    Gemini provides fast, accurate intent parsing with a generous free tier
+    (1,500 requests/day).
     """
 
     def __init__(self, memory: CommandMemory):
         self.memory = memory
-        self.model = Config.OLLAMA_MODEL
+        self.model_name = Config.GEMINI_MODEL
 
-        # Try to import ollama
+        # Try to import google-generativeai
         try:
-            import ollama
-            self.ollama = ollama
+            import google.generativeai as genai
+            self.genai = genai
         except ImportError:
-            print("ERROR: ollama not installed. Install with: pip install ollama")
+            print("ERROR: google-generativeai not installed.")
+            print("  Install with: pip3 install google-generativeai")
             sys.exit(1)
 
-        # Test connection to Ollama
-        self._test_connection()
+        # Initialize Gemini
+        self._init_gemini()
 
-    def _test_connection(self):
-        """Test that Ollama is running and the model is available."""
+    def _init_gemini(self):
+        """Initialize the Gemini API client."""
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            print("ERROR: GEMINI_API_KEY environment variable not set.")
+            print("  1. Get an API key at: https://aistudio.google.com/apikey")
+            print("  2. Set it with: export GEMINI_API_KEY='your-key-here'")
+            sys.exit(1)
+
         try:
-            models_response = self.ollama.list()
-
-            # Handle different response formats (dict or object)
-            model_names = []
-            if hasattr(models_response, 'models'):
-                # Newer ollama library returns object
-                for m in models_response.models:
-                    name = m.model if hasattr(m, 'model') else str(m)
-                    model_names.append(name.split(':')[0])
-            elif isinstance(models_response, dict):
-                # Older format returns dict
-                for m in models_response.get('models', []):
-                    name = m.get('name', m.get('model', str(m)))
-                    model_names.append(name.split(':')[0])
-
-            if self.model not in model_names:
-                print(f"WARNING: Model '{self.model}' not found in Ollama.")
-                print(f"  Available models: {model_names}")
-                print(f"  Pull it with: ollama pull {self.model}")
-            else:
-                print(f"[OLLAMA] Connected, using model: {self.model}")
+            self.genai.configure(api_key=api_key)
+            self.model = self.genai.GenerativeModel(self.model_name)
+            print(f"[GEMINI] Connected, using model: {self.model_name}")
         except Exception as e:
-            print(f"ERROR: Cannot connect to Ollama: {e}")
-            print("  Make sure Ollama is running: ollama serve")
+            print(f"ERROR: Cannot initialize Gemini: {e}")
             sys.exit(1)
 
     def _build_system_prompt(self) -> str:
-        """Short prompt for faster responses."""
-        return """Parse Star Trek commands to JSON. Output ONLY JSON:
+        """Comprehensive prompt for Star Trek command parsing."""
+        return """You are a Star Trek starship computer parsing voice commands into JSON.
+
+Output ONLY valid JSON in this format:
 {"department":"helm","intent":"navigate","target":"Jupiter","warp_factor":5,"impulse_percent":null,"maneuver":null,"confidence":0.9}
 
-Valid intents: navigate, warp, impulse, stop, turn, raise_shields, lower_shields, orbit, disengage, status
+VALID INTENTS:
+- navigate: Set course to a destination (requires target, optional warp_factor)
+- warp: Change warp speed only (requires warp_factor, no target)
+- impulse: Set impulse speed (requires impulse_percent: 0-100)
+- stop: All stop / full stop / drop out of warp
+- disengage: Disengage autopilot or current course
+- orbit: Enter orbit around target (requires target)
+- raise_shields: Raise shields / shields up
+- lower_shields: Lower shields / shields down
+- red_alert: Red alert
+- yellow_alert: Yellow alert
+- green_alert: Green alert / stand down
+- scan: Scan a target (requires target)
+- status: Ship status report
+- damage_report: Damage report
+- hail: Hail a target (requires target)
+- fire: Fire weapons at target (requires target)
+- evasive: Evasive maneuvers (optional maneuver name)
+- reverse: Reverse course/engines
+- dock: Dock with station/target
+- land: Land on planet/target
 
-Valid targets (case-insensitive):
-Sun, Mercury, Venus, Earth, Moon, Mars, Jupiter, Saturn, Uranus, Neptune, Starbase 1
+VALID TARGETS (planets/locations):
+Sun, Mercury, Venus, Earth, Moon, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto, Starbase 1, Starbase, Deep Space Nine, DS9
 
-Examples:
-"set course for jupiter warp 5" → {"intent":"navigate","target":"Jupiter","warp_factor":5}
-"course to mars" → {"intent":"navigate","target":"Mars","warp_factor":5}
-"take us to earth" → {"intent":"navigate","target":"Earth","warp_factor":5}
-"head to neptune warp 7" → {"intent":"navigate","target":"Neptune","warp_factor":7}
-"saturn warp 6" → {"intent":"navigate","target":"Saturn","warp_factor":6}
-"uranus" → {"intent":"navigate","target":"Uranus","warp_factor":5}
-"the sun" → {"intent":"navigate","target":"Sun","warp_factor":5}
-"starbase" → {"intent":"navigate","target":"Starbase 1","warp_factor":5}
-"full impulse" → {"intent":"impulse","impulse_percent":100}
-"half impulse" → {"intent":"impulse","impulse_percent":50}
-"quarter impulse" → {"intent":"impulse","impulse_percent":25}
-"all stop" → {"intent":"stop"}
-"disengage" → {"intent":"disengage"}
-"drop out of warp" → {"intent":"stop"}
-"orbit earth" → {"intent":"orbit","target":"Earth"}
-"raise shields" → {"intent":"raise_shields"}
-"status" → {"intent":"status"}
+NAVIGATION EXAMPLES:
+"set course for jupiter warp 5" → {"department":"helm","intent":"navigate","target":"Jupiter","warp_factor":5}
+"take us to mars" → {"department":"helm","intent":"navigate","target":"Mars","warp_factor":5}
+"head to earth" → {"department":"helm","intent":"navigate","target":"Earth","warp_factor":5}
+"plot a course to saturn" → {"department":"helm","intent":"navigate","target":"Saturn","warp_factor":5}
+"lay in a course for neptune warp 8" → {"department":"helm","intent":"navigate","target":"Neptune","warp_factor":8}
+"let's go to jupiter" → {"department":"helm","intent":"navigate","target":"Jupiter","warp_factor":5}
+"let's go home" → {"department":"helm","intent":"navigate","target":"Earth","warp_factor":5}
+"take me home" → {"department":"helm","intent":"navigate","target":"Earth","warp_factor":5}
+"back to earth" → {"department":"helm","intent":"navigate","target":"Earth","warp_factor":5}
 
-JSON ONLY. No explanation."""
+WARP SPEED EXAMPLES (changing speed without destination):
+"warp 9" → {"department":"helm","intent":"warp","warp_factor":9}
+"warp factor 7" → {"department":"helm","intent":"warp","warp_factor":7}
+"increase speed to warp 9" → {"department":"helm","intent":"warp","warp_factor":9}
+"increase to warp 8" → {"department":"helm","intent":"warp","warp_factor":8}
+"speed up to warp 6" → {"department":"helm","intent":"warp","warp_factor":6}
+"faster" → {"department":"helm","intent":"warp","warp_factor":7}
+"maximum warp" → {"department":"helm","intent":"warp","warp_factor":9.9}
+"warp speed" → {"department":"helm","intent":"warp","warp_factor":5}
+"engage warp drive" → {"department":"helm","intent":"warp","warp_factor":5}
+"punch it" → {"department":"helm","intent":"warp","warp_factor":9}
+"hit it" → {"department":"helm","intent":"warp","warp_factor":9}
+"engage" → {"department":"helm","intent":"warp","warp_factor":5}
+"make it so" → {"department":"helm","intent":"warp","warp_factor":5}
+"energize" → {"department":"helm","intent":"warp","warp_factor":5}
+"ahead warp factor 5" → {"department":"helm","intent":"warp","warp_factor":5}
+"slow to warp 2" → {"department":"helm","intent":"warp","warp_factor":2}
+"reduce speed to warp 3" → {"department":"helm","intent":"warp","warp_factor":3}
+
+IMPULSE EXAMPLES:
+"full impulse" → {"department":"helm","intent":"impulse","impulse_percent":100}
+"half impulse" → {"department":"helm","intent":"impulse","impulse_percent":50}
+"quarter impulse" → {"department":"helm","intent":"impulse","impulse_percent":25}
+"one quarter impulse" → {"department":"helm","intent":"impulse","impulse_percent":25}
+"three quarter impulse" → {"department":"helm","intent":"impulse","impulse_percent":75}
+"impulse power" → {"department":"helm","intent":"impulse","impulse_percent":50}
+"ahead one third" → {"department":"helm","intent":"impulse","impulse_percent":33}
+"ahead two thirds" → {"department":"helm","intent":"impulse","impulse_percent":66}
+"ahead full" → {"department":"helm","intent":"impulse","impulse_percent":100}
+"thrusters only" → {"department":"helm","intent":"impulse","impulse_percent":10}
+
+STOP/DISENGAGE EXAMPLES:
+"all stop" → {"department":"helm","intent":"stop"}
+"full stop" → {"department":"helm","intent":"stop"}
+"stop" → {"department":"helm","intent":"stop"}
+"hold position" → {"department":"helm","intent":"stop"}
+"drop out of warp" → {"department":"helm","intent":"stop"}
+"exit warp" → {"department":"helm","intent":"stop"}
+"disengage" → {"department":"helm","intent":"disengage"}
+"disengage autopilot" → {"department":"helm","intent":"disengage"}
+"cancel course" → {"department":"helm","intent":"disengage"}
+"abort" → {"department":"helm","intent":"disengage"}
+
+ORBIT EXAMPLES:
+"orbit earth" → {"department":"helm","intent":"orbit","target":"Earth"}
+"standard orbit" → {"department":"helm","intent":"orbit"}
+"enter orbit" → {"department":"helm","intent":"orbit"}
+"establish orbit around mars" → {"department":"helm","intent":"orbit","target":"Mars"}
+"geosynchronous orbit" → {"department":"helm","intent":"orbit"}
+
+TACTICAL EXAMPLES:
+"raise shields" → {"department":"tactical","intent":"raise_shields"}
+"shields up" → {"department":"tactical","intent":"raise_shields"}
+"lower shields" → {"department":"tactical","intent":"lower_shields"}
+"shields down" → {"department":"tactical","intent":"lower_shields"}
+"red alert" → {"department":"tactical","intent":"red_alert"}
+"yellow alert" → {"department":"tactical","intent":"yellow_alert"}
+"green alert" → {"department":"tactical","intent":"green_alert"}
+"stand down" → {"department":"tactical","intent":"green_alert"}
+"battle stations" → {"department":"tactical","intent":"red_alert"}
+"fire phasers" → {"department":"tactical","intent":"fire","target":"enemy"}
+"fire torpedoes" → {"department":"tactical","intent":"fire","target":"enemy"}
+"target that ship" → {"department":"tactical","intent":"fire","target":"enemy"}
+"evasive maneuvers" → {"department":"helm","intent":"evasive"}
+"evasive pattern alpha" → {"department":"helm","intent":"evasive","maneuver":"alpha"}
+"evasive pattern delta" → {"department":"helm","intent":"evasive","maneuver":"delta"}
+
+OPS/ENGINEERING EXAMPLES:
+"status" → {"department":"ops","intent":"status"}
+"status report" → {"department":"ops","intent":"status"}
+"ship status" → {"department":"ops","intent":"status"}
+"report" → {"department":"ops","intent":"status"}
+"damage report" → {"department":"engineering","intent":"damage_report"}
+"scan jupiter" → {"department":"ops","intent":"scan","target":"Jupiter"}
+"scan for life signs" → {"department":"ops","intent":"scan","target":"life signs"}
+"hail them" → {"department":"ops","intent":"hail","target":"them"}
+"hail starbase" → {"department":"ops","intent":"hail","target":"Starbase 1"}
+"open a channel" → {"department":"ops","intent":"hail"}
+"on screen" → {"department":"ops","intent":"viewscreen"}
+
+MISC EXAMPLES:
+"reverse" → {"department":"helm","intent":"reverse"}
+"reverse engines" → {"department":"helm","intent":"reverse"}
+"back us off" → {"department":"helm","intent":"reverse"}
+"dock with the station" → {"department":"helm","intent":"dock","target":"Starbase 1"}
+"land on mars" → {"department":"helm","intent":"land","target":"Mars"}
+
+ALWAYS output valid JSON. No explanation text. confidence should be 0.0-1.0 based on how well you understood the command."""
+
+    def _try_pattern_match(self, text: str) -> Optional[BridgeCommand]:
+        """Try to match common commands without using the LLM (faster)."""
+        import re
+        text_lower = text.lower().strip().rstrip('.').rstrip(',').rstrip('!')
+
+        # Valid destinations for navigation
+        valid_targets = {
+            "sun": "Sun", "the sun": "Sun", "sol": "Sun",
+            "mercury": "Mercury",
+            "venus": "Venus",
+            "earth": "Earth", "terra": "Earth", "home": "Earth",
+            "moon": "Moon", "the moon": "Moon", "luna": "Moon",
+            "mars": "Mars",
+            "jupiter": "Jupiter",
+            "saturn": "Saturn",
+            "uranus": "Uranus",
+            "neptune": "Neptune",
+            "pluto": "Pluto",
+            "starbase": "Starbase 1", "starbase 1": "Starbase 1", "starbase one": "Starbase 1",
+            "spacedock": "Starbase 1", "space dock": "Starbase 1",
+            "deep space nine": "Deep Space Nine", "deep space 9": "Deep Space Nine", "ds9": "Deep Space Nine",
+        }
+
+        # =====================================================================
+        # WARP SPEED COMMANDS (no destination, just speed change)
+        # =====================================================================
+
+        # "warp [number]", "warp factor [number]", "warp speed [number]"
+        warp_match = re.search(r'warp\s*(?:factor\s*|speed\s*)?(\d+(?:\.\d+)?)', text_lower)
+
+        # "increase/raise/change speed to warp [number]"
+        increase_warp = re.search(r'(?:increase|raise|change|set|adjust)\s+(?:speed\s+)?to\s+warp\s*(\d+(?:\.\d+)?)', text_lower)
+        if increase_warp:
+            return BridgeCommand("helm", "warp", None, float(increase_warp.group(1)), None, None)
+
+        # "increase to warp [number]"
+        increase_warp2 = re.search(r'increase\s+to\s+warp\s*(\d+(?:\.\d+)?)', text_lower)
+        if increase_warp2:
+            return BridgeCommand("helm", "warp", None, float(increase_warp2.group(1)), None, None)
+
+        # "slow/reduce to warp [number]"
+        slow_warp = re.search(r'(?:slow|reduce|decrease)\s+(?:speed\s+)?to\s+warp\s*(\d+(?:\.\d+)?)', text_lower)
+        if slow_warp:
+            return BridgeCommand("helm", "warp", None, float(slow_warp.group(1)), None, None)
+
+        # "ahead warp factor [number]"
+        ahead_warp = re.search(r'ahead\s+warp\s*(?:factor\s*)?(\d+(?:\.\d+)?)', text_lower)
+        if ahead_warp:
+            return BridgeCommand("helm", "warp", None, float(ahead_warp.group(1)), None, None)
+
+        # Star Trek catchphrases
+        if text_lower in ["punch it", "hit it"]:
+            return BridgeCommand("helm", "warp", None, 9.0, None, None)
+        if text_lower in ["engage", "make it so", "energize"]:
+            return BridgeCommand("helm", "warp", None, 5.0, None, None)
+        if text_lower in ["maximum warp", "max warp"]:
+            return BridgeCommand("helm", "warp", None, 9.9, None, None)
+        if text_lower in ["warp speed", "engage warp", "engage warp drive"]:
+            return BridgeCommand("helm", "warp", None, 5.0, None, None)
+        if text_lower == "faster":
+            return BridgeCommand("helm", "warp", None, 7.0, None, None)
+
+        # Simple "warp [number]" without destination context
+        if warp_match and not any(t in text_lower for t in valid_targets.keys()):
+            # Make sure this isn't a navigation command
+            nav_words = ["course", "head", "take", "go to", "set", "plot", "lay"]
+            if not any(w in text_lower for w in nav_words):
+                return BridgeCommand("helm", "warp", None, float(warp_match.group(1)), None, None)
+
+        # =====================================================================
+        # IMPULSE COMMANDS
+        # =====================================================================
+        if "full impulse" in text_lower or "ahead full" in text_lower:
+            return BridgeCommand("helm", "impulse", None, None, 100, None)
+        if "half impulse" in text_lower:
+            return BridgeCommand("helm", "impulse", None, None, 50, None)
+        if "quarter impulse" in text_lower or "one quarter impulse" in text_lower:
+            return BridgeCommand("helm", "impulse", None, None, 25, None)
+        if "three quarter impulse" in text_lower:
+            return BridgeCommand("helm", "impulse", None, None, 75, None)
+        if "ahead one third" in text_lower or "one third impulse" in text_lower:
+            return BridgeCommand("helm", "impulse", None, None, 33, None)
+        if "ahead two thirds" in text_lower or "two thirds impulse" in text_lower:
+            return BridgeCommand("helm", "impulse", None, None, 66, None)
+        if text_lower in ["impulse", "impulse power", "impulse speed"]:
+            return BridgeCommand("helm", "impulse", None, None, 50, None)
+        if "thrusters only" in text_lower or "thrusters" in text_lower:
+            return BridgeCommand("helm", "impulse", None, None, 10, None)
+
+        # =====================================================================
+        # STOP / DISENGAGE COMMANDS
+        # =====================================================================
+        stop_phrases = ["all stop", "stop", "full stop", "hold position", "holding position",
+                        "drop out of warp", "exit warp", "come out of warp"]
+        if text_lower in stop_phrases or any(p in text_lower for p in ["drop out of warp", "exit warp"]):
+            return BridgeCommand("helm", "stop", None, None, None, None)
+
+        disengage_phrases = ["disengage", "cancel course", "abort", "disengage autopilot"]
+        if text_lower in disengage_phrases or "disengage" in text_lower:
+            return BridgeCommand("helm", "disengage", None, None, None, None)
+
+        # =====================================================================
+        # REVERSE COMMANDS
+        # =====================================================================
+        if text_lower in ["reverse", "reverse engines", "back up", "back us off", "full reverse"]:
+            return BridgeCommand("helm", "reverse", None, None, None, None)
+
+        # =====================================================================
+        # SHIELD COMMANDS
+        # =====================================================================
+        if "raise shields" in text_lower or "shields up" in text_lower:
+            return BridgeCommand("tactical", "raise_shields", None, None, None, None)
+        if "lower shields" in text_lower or "shields down" in text_lower:
+            return BridgeCommand("tactical", "lower_shields", None, None, None, None)
+
+        # =====================================================================
+        # ALERT COMMANDS
+        # =====================================================================
+        if "red alert" in text_lower or "battle stations" in text_lower:
+            return BridgeCommand("tactical", "red_alert", None, None, None, None)
+        if "yellow alert" in text_lower:
+            return BridgeCommand("tactical", "yellow_alert", None, None, None, None)
+        if "green alert" in text_lower or text_lower == "stand down":
+            return BridgeCommand("tactical", "green_alert", None, None, None, None)
+
+        # =====================================================================
+        # STATUS / REPORT COMMANDS
+        # =====================================================================
+        if text_lower in ["status", "status report", "report", "ship status"]:
+            return BridgeCommand("ops", "status", None, None, None, None)
+        if "damage report" in text_lower:
+            return BridgeCommand("engineering", "damage_report", None, None, None, None)
+
+        # =====================================================================
+        # ORBIT COMMANDS
+        # =====================================================================
+        if text_lower in ["standard orbit", "enter orbit", "establish orbit", "orbit"]:
+            return BridgeCommand("helm", "orbit", None, None, None, None)
+
+        orbit_match = re.search(r'(?:orbit|enter orbit around|establish orbit around)\s+(\w+(?:\s+\w+)?)', text_lower)
+        if orbit_match:
+            target_text = orbit_match.group(1).lower()
+            target = valid_targets.get(target_text, target_text.capitalize())
+            return BridgeCommand("helm", "orbit", target, None, None, None)
+
+        # =====================================================================
+        # SCAN COMMANDS
+        # =====================================================================
+        scan_match = re.search(r'scan\s+(.+)', text_lower)
+        if scan_match:
+            target_text = scan_match.group(1).strip()
+            target = valid_targets.get(target_text, target_text.capitalize())
+            return BridgeCommand("ops", "scan", target, None, None, None)
+
+        # =====================================================================
+        # EVASIVE MANEUVERS
+        # =====================================================================
+        if text_lower == "evasive maneuvers" or text_lower == "evasive":
+            return BridgeCommand("helm", "evasive", None, None, None, None)
+        evasive_match = re.search(r'evasive\s+(?:pattern\s+)?(\w+)', text_lower)
+        if evasive_match:
+            maneuver = evasive_match.group(1)
+            return BridgeCommand("helm", "evasive", None, None, None, maneuver)
+
+        # =====================================================================
+        # HAIL COMMANDS
+        # =====================================================================
+        if text_lower in ["hail them", "open a channel", "on screen", "open channel"]:
+            return BridgeCommand("ops", "hail", None, None, None, None)
+        hail_match = re.search(r'hail\s+(.+)', text_lower)
+        if hail_match:
+            target_text = hail_match.group(1).strip()
+            target = valid_targets.get(target_text, target_text.capitalize())
+            return BridgeCommand("ops", "hail", target, None, None, None)
+
+        # =====================================================================
+        # FIRE COMMANDS
+        # =====================================================================
+        if "fire phasers" in text_lower or "fire torpedoes" in text_lower or "open fire" in text_lower:
+            return BridgeCommand("tactical", "fire", "enemy", None, None, None)
+        fire_match = re.search(r'(?:fire|target|fire at|fire on)\s+(.+)', text_lower)
+        if fire_match:
+            target = fire_match.group(1).strip().capitalize()
+            return BridgeCommand("tactical", "fire", target, None, None, None)
+
+        # =====================================================================
+        # DOCK / LAND COMMANDS
+        # =====================================================================
+        if "dock" in text_lower:
+            dock_match = re.search(r'dock\s+(?:with\s+)?(?:the\s+)?(.+)', text_lower)
+            if dock_match:
+                target_text = dock_match.group(1).strip().lower()
+                target = valid_targets.get(target_text, target_text.capitalize())
+                return BridgeCommand("helm", "dock", target, None, None, None)
+            return BridgeCommand("helm", "dock", "Starbase 1", None, None, None)
+
+        land_match = re.search(r'land\s+(?:on\s+)?(?:the\s+)?(.+)', text_lower)
+        if land_match:
+            target_text = land_match.group(1).strip().lower()
+            target = valid_targets.get(target_text, target_text.capitalize())
+            return BridgeCommand("helm", "land", target, None, None, None)
+
+        # =====================================================================
+        # NAVIGATION COMMANDS (with destination)
+        # =====================================================================
+
+        # "let's go home" / "take me home" / "back to earth"
+        if "go home" in text_lower or "take me home" in text_lower or "back to earth" in text_lower:
+            return BridgeCommand("helm", "navigate", "Earth", 5.0, None, None)
+
+        # Complex navigation patterns
+        nav_patterns = [
+            # "set course for X warp Y" / "plot a course to X"
+            r"(?:set|plot|lay\s+in)\s+(?:a\s+)?course\s+(?:for|to)\s+(?:the\s+)?(\w+(?:\s+\w+)?)(?:.*warp\s*(?:factor\s*)?(\d+(?:\.\d+)?))?",
+            # "course to X"
+            r"course\s+(?:for|to)\s+(?:the\s+)?(\w+(?:\s+\w+)?)(?:.*warp\s*(?:factor\s*)?(\d+(?:\.\d+)?))?",
+            # "take us to X" / "head to X" / "go to X" / "let's go to X"
+            r"(?:take\s+us\s+to|head\s+(?:for|to)|go\s+to|let'?s\s+go\s+to)\s+(?:the\s+)?(\w+(?:\s+\w+)?)(?:.*warp\s*(?:factor\s*)?(\d+(?:\.\d+)?))?",
+            # "X warp Y" (destination then warp)
+            r"^(\w+(?:\s+\w+)?)\s+warp\s*(?:factor\s*)?(\d+(?:\.\d+)?)",
+            # Just destination name if it's a valid target
+            r"^(?:the\s+)?(\w+(?:\s+\w+)?)\s*$",
+        ]
+
+        for pattern in nav_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                target_text = match.group(1).strip().lower()
+                warp = float(match.group(2)) if match.lastindex >= 2 and match.group(2) else 5.0
+
+                # Check if target is valid
+                if target_text in valid_targets:
+                    target = valid_targets[target_text]
+                    return BridgeCommand("helm", "navigate", target, warp, None, None)
+
+        return None
 
     def parse(self, text: str) -> Optional[BridgeCommand]:
         """
@@ -575,28 +935,29 @@ JSON ONLY. No explanation."""
         """
         print("[PARSING] Interpreting command...")
 
+        # Try fast pattern matching first
+        quick_match = self._try_pattern_match(text)
+        if quick_match:
+            print("  [QUICK MATCH] Recognized common command")
+            return quick_match
+
         # Build the prompt with context
         context = self.memory.get_context_string()
-        user_prompt = f"Context: {context}\n\nCommand: \"{text}\"\n\nJSON:"
+        system_prompt = self._build_system_prompt()
+        full_prompt = f"{system_prompt}\n\nContext: {context}\n\nCommand: \"{text}\"\n\nJSON:"
 
         try:
-            # Call Ollama
-            response = self.ollama.chat(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self._build_system_prompt()},
-                    {"role": "user", "content": user_prompt}
-                ],
-                options={
-                    "temperature": 0.1,  # Low temperature for consistent output
-                }
+            # Call Gemini API
+            response = self.model.generate_content(
+                full_prompt,
+                generation_config=self.genai.types.GenerationConfig(
+                    temperature=0.1,  # Low temperature for consistent output
+                    max_output_tokens=150,  # Limit response length
+                )
             )
 
-            # Extract the response (handle both dict and object formats)
-            if hasattr(response, 'message'):
-                response_text = response.message.content.strip()
-            else:
-                response_text = response['message']['content'].strip()
+            # Extract the response text
+            response_text = response.text.strip()
 
             # Try to extract JSON from response
             json_data = self._extract_json(response_text)
@@ -622,6 +983,7 @@ JSON ONLY. No explanation."""
             # Normalize intent (LLM sometimes returns variations)
             intent = json_data.get('intent', 'stop')
             intent_map = {
+                # Navigation variations
                 'navigation': 'navigate',
                 'set_course': 'navigate',
                 'course': 'navigate',
@@ -629,17 +991,53 @@ JSON ONLY. No explanation."""
                 'goto': 'navigate',
                 'head_to': 'navigate',
                 'take_us_to': 'navigate',
+                'plot_course': 'navigate',
+                'lay_in_course': 'navigate',
+                # Warp variations
                 'engage': 'warp',
+                'engage_warp': 'warp',
+                'warp_speed': 'warp',
+                'increase_speed': 'warp',
+                'change_speed': 'warp',
+                # Stop variations
                 'full_stop': 'stop',
                 'all_stop': 'stop',
                 'halt': 'stop',
+                'hold': 'stop',
+                'hold_position': 'stop',
+                'drop_out': 'stop',
+                'exit_warp': 'stop',
+                # Shield variations
                 'shields_up': 'raise_shields',
                 'shields_down': 'lower_shields',
-                'drop_out': 'stop',
+                # Orbit variations
                 'enter_orbit': 'orbit',
                 'standard_orbit': 'orbit',
+                'establish_orbit': 'orbit',
+                # Status variations
                 'report': 'status',
                 'ship_status': 'status',
+                'status_report': 'status',
+                # Alert variations
+                'battlestations': 'red_alert',
+                'battle_stations': 'red_alert',
+                'condition_red': 'red_alert',
+                'condition_yellow': 'yellow_alert',
+                'condition_green': 'green_alert',
+                'stand_down': 'green_alert',
+                # Evasive variations
+                'evasive_maneuvers': 'evasive',
+                'evasive_action': 'evasive',
+                # Hail variations
+                'open_channel': 'hail',
+                'hail_ship': 'hail',
+                'on_screen': 'viewscreen',
+                'onscreen': 'viewscreen',
+                # Fire variations
+                'attack': 'fire',
+                'fire_weapons': 'fire',
+                'fire_phasers': 'fire',
+                'fire_torpedoes': 'fire',
             }
             intent = intent_map.get(intent, intent)
 
@@ -657,6 +1055,9 @@ JSON ONLY. No explanation."""
                     'starbase': 'Starbase 1',
                     'spacedock': 'Starbase 1',
                     'space dock': 'Starbase 1',
+                    'deep space nine': 'Deep Space Nine',
+                    'deep space 9': 'Deep Space Nine',
+                    'ds9': 'Deep Space Nine',
                 }
                 target_lower = target.lower()
                 target = target_map.get(target_lower, target.capitalize())
@@ -675,7 +1076,7 @@ JSON ONLY. No explanation."""
             return command
 
         except Exception as e:
-            print(f"  [ERROR] Ollama request failed: {e}")
+            print(f"  [ERROR] Gemini request failed: {e}")
             return None
 
     def _extract_json(self, text: str) -> Optional[Dict[str, Any]]:

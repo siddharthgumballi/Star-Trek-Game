@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://scripts/environment/sector_sol_realistic.gd" id="1_sector"]
 [ext_resource type="Script" path="res://scripts/bridge_ai/bridge_ai_receiver.gd" id="12_bridge_ai"]
@@ -13,6 +13,12 @@
 [ext_resource type="Script" path="res://scripts/environment/bridge_interior.gd" id="9_bridge"]
 [ext_resource type="Script" path="res://scripts/ship/warp_effects.gd" id="10_warp_effects"]
 [ext_resource type="Script" path="res://scripts/hud/warp_flash_overlay.gd" id="11_flash_overlay"]
+[ext_resource type="Script" path="res://scripts/ship/starship_core.gd" id="15_starship_core"]
+[ext_resource type="Script" path="res://scripts/ship/systems/helm_system.gd" id="16_helm"]
+[ext_resource type="Script" path="res://scripts/ship/systems/tactical_system.gd" id="17_tactical"]
+[ext_resource type="Script" path="res://scripts/ship/systems/engineering_system.gd" id="18_engineering"]
+[ext_resource type="Script" path="res://scripts/ship/systems/ops_system.gd" id="19_ops"]
+[ext_resource type="Script" path="res://scripts/hud/debug_overlay.gd" id="20_debug"]
 
 [node name="Sector_001_Sol_Realistic" type="Node3D"]
 script = ExtResource("1_sector")
@@ -38,6 +44,24 @@ warp_drive_path = NodePath("../WarpDrive")
 ship_model_loader_path = NodePath("../ModelLoader")
 camera_manager_path = NodePath("../../CameraManager")
 flash_overlay_path = NodePath("../../WarpFlashOverlay")
+
+[node name="StarshipCore" type="Node" parent="Starship"]
+script = ExtResource("15_starship_core")
+ship_controller_path = NodePath("..")
+warp_drive_path = NodePath("../WarpDrive")
+hud_path = NodePath("../../LCARSHUD")
+
+[node name="HelmSystem" type="Node" parent="Starship/StarshipCore"]
+script = ExtResource("16_helm")
+
+[node name="TacticalSystem" type="Node" parent="Starship/StarshipCore"]
+script = ExtResource("17_tactical")
+
+[node name="EngineeringSystem" type="Node" parent="Starship/StarshipCore"]
+script = ExtResource("18_engineering")
+
+[node name="OpsSystem" type="Node" parent="Starship/StarshipCore"]
+script = ExtResource("19_ops")
 
 [node name="BridgeInterior" type="Node3D" parent="."]
 script = ExtResource("9_bridge")
@@ -73,6 +97,12 @@ camera_manager_path = NodePath("../CameraManager")
 layer = 100
 script = ExtResource("11_flash_overlay")
 
+[node name="DebugOverlay" type="CanvasLayer" parent="."]
+script = ExtResource("20_debug")
+starship_core_path = NodePath("../Starship/StarshipCore")
+ship_path = NodePath("../Starship")
+warp_drive_path = NodePath("../Starship/WarpDrive")
+
 [node name="BridgeAIReceiver" type="Node" parent="."]
 script = ExtResource("12_bridge_ai")
 listen_port = 5005
@@ -89,3 +119,4 @@ script = ExtResource("13_bridge_handler")
 ship_path = NodePath("../Starship")
 warp_drive_path = NodePath("../Starship/WarpDrive")
 hud_path = NodePath("../LCARSHUD")
+starship_core_path = NodePath("../Starship/StarshipCore")

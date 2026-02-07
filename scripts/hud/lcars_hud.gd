@@ -317,11 +317,12 @@ func _create_lcars_ui() -> void:
 	sep2.add_theme_constant_override("separation", 10)
 	vbox.add_child(sep2)
 
-	# Controls help
+	# Controls help - centered with all commands visible
 	_controls_label = Label.new()
-	_controls_label.text = "E/Q Impulse | W/S Pitch | A/D Yaw\nZ/C Roll | Space Stop | O Orbit\nShift+W Warp | +/- Warp Factor\nShift+D Dock | F1-F4 Camera | M Map"
+	_controls_label.text = "E/Q Impulse | W/S Pitch | A/D Yaw | Z/C Roll | Space Stop\nShift+W Warp | +/- Factor | R/Y/G Alert | Tab Target | F Phasers\nShift+S Shields | T Torpedoes | V Evasive | N Scan | F7 Help"
 	_controls_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
 	_controls_label.add_theme_font_size_override("font_size", 11)
+	_controls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_controls_label)
 
 	# Spacer
