@@ -1,0 +1,11 @@
+# Bridge AI Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Audio recording from microphone
+pyaudio>=0.2.13
+
+# Numerical operations for audio processing
+numpy>=1.24.0
+
+# Ollama Python client for local LLM
+ollama>=0.1.0

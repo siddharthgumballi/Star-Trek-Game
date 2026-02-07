@@ -54,3 +54,32 @@ dist/
 # Blender backup files
 *.blend1
 *.blend2
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+.env
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+.mypy_cache/
+
+# Bridge AI - temporary audio files
+bridge_ai/*.wav
+bridge_ai/*.mp3
+bridge_ai/*.tmp
+
+# Whisper models (too large for git)
+*.bin
+*.ggml
+
+# macOS extended attributes on audio
+bridge_ai/._*

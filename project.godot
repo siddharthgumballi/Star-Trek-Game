@@ -13,7 +13,7 @@ config_version=5
 config/name="Star Trek Flight Simulator"
 run/main_scene="res://scenes/ui/ship_selection.tscn"
 config/features=PackedStringArray("4.5", "Forward Plus")
-config/icon="res://icon.svg"
+config/icon="res://StarshipCommandIcon.png"
 
 [autoload]
 

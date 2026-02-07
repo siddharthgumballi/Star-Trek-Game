@@ -958,6 +958,240 @@ func _disengage_autopilot() -> void:
 	_hide_disengage_button()
 	print("Autopilot disengaged")
 
+# === VOICE COMMAND AUTOPILOT ===
+
+# Name aliases for voice recognition - maps spoken names to actual node names
+const DESTINATION_ALIASES: Dictionary = {
+	# Sun aliases
+	"sun": "Sun", "the sun": "Sun", "sol": "Sun",
+	# Mercury
+	"mercury": "Mercury",
+	# Venus
+	"venus": "Venus",
+	# Earth aliases
+	"earth": "Earth", "terra": "Earth", "home": "Earth",
+	# Moon aliases
+	"moon": "Moon", "the moon": "Moon", "luna": "Moon",
+	# Mars aliases
+	"mars": "Mars", "the red planet": "Mars",
+	# Jupiter aliases
+	"jupiter": "Jupiter",
+	# Saturn aliases
+	"saturn": "Saturn",
+	# Uranus aliases
+	"uranus": "Uranus",
+	# Neptune aliases
+	"neptune": "Neptune",
+	# Starbase aliases
+	"starbase": "Starbase 1", "starbase 1": "Starbase 1", "starbase one": "Starbase 1",
+	"the starbase": "Starbase 1", "spacedock": "Starbase 1", "space dock": "Starbase 1",
+}
+
+## Find a navigation target by name (with alias support)
+func _find_voice_target(target_name: String) -> Node3D:
+	if not target_name or target_name.is_empty():
+		return null
+
+	var search_name: String = target_name.to_lower().strip_edges()
+
+	# Check aliases first
+	if search_name in DESTINATION_ALIASES:
+		search_name = DESTINATION_ALIASES[search_name]
+	else:
+		# Capitalize first letter for direct match attempt
+		search_name = target_name.capitalize()
+
+	# Try sector.get_planet() first
+	if sector and sector.has_method("get_planet"):
+		var target = sector.get_planet(search_name)
+		if target:
+			return target
+
+	# Try case-insensitive search in celestial_bodies group
+	var bodies = get_tree().get_nodes_in_group("celestial_bodies")
+	for body in bodies:
+		if body.name.to_lower() == search_name.to_lower():
+			return body
+
+	# Try partial match (e.g., "starbase" matches "Starbase 1")
+	for body in bodies:
+		if search_name.to_lower() in body.name.to_lower():
+			return body
+
+	return null
+
+## Public method for Bridge AI voice commands to engage autopilot
+## Returns Dictionary with {success: bool, message: String}
+func engage_autopilot_voice(target_name: String, warp_factor: float) -> Dictionary:
+	# Validate inputs with null safety
+	if target_name == null or target_name.is_empty():
+		return {"success": false, "message": "No destination specified."}
+
+	if not ship:
+		return {"success": false, "message": "Ship systems not ready."}
+
+	if not sector:
+		return {"success": false, "message": "Navigation system offline."}
+
+	# Check if already at warp
+	if warp_drive and warp_drive.is_at_warp:
+		return {"success": false, "message": "Cannot set new course while at warp. Disengage first."}
+
+	# Check if already on autopilot
+	if _autopilot_active:
+		return {"success": false, "message": "Autopilot already engaged. Disengage first."}
+
+	# Find target using alias system
+	var target: Node3D = _find_voice_target(target_name)
+	if not target:
+		return {"success": false, "message": "Unable to locate " + target_name + " in navigation database."}
+
+	# Validate warp factor with null safety
+	if is_nan(warp_factor) or warp_factor <= 0 or warp_factor >= 10:
+		return {"success": false, "message": "Warp factor must be between 1 and 9.99."}
+
+	if warp_drive and warp_factor > warp_drive.max_warp_factor:
+		return {"success": false, "message": "Warp " + str(warp_factor) + " exceeds ship maximum of " + str(warp_drive.max_warp_factor) + "."}
+
+	# Check if safe for warp
+	if warp_drive and warp_drive.has_method("can_engage_warp") and not warp_drive.can_engage_warp():
+		return {"success": false, "message": "Too close to gravitational body for warp."}
+
+	# Get the actual node name (never null for valid nodes)
+	var display_name: String = target.name if target.name else target_name
+
+	# Set up autopilot (same as _on_engage_pressed but with voice parameters)
+	_selected_destination = target
+	_selected_destination_name = display_name
+	_course_warp_factor = warp_factor
+	_course_use_warp = true
+
+	_autopilot_active = true
+	_autopilot_destination = target.global_position
+	_autopilot_last_distance = -1.0
+	_autopilot_using_warp = true
+	_autopilot_aligning = true  # Must align before warp
+
+	if warp_drive:
+		warp_drive.set_warp_factor(warp_factor)
+
+	# Close course panel if open
+	if _course_panel:
+		_course_panel.visible = false
+
+	# Show disengage button
+	_show_disengage_button()
+
+	print("[VOICE] Course set: ", display_name, " at Warp ", warp_factor)
+	return {"success": true, "message": "Course laid in. " + display_name + ", warp " + str(warp_factor) + "."}
+
+## Public method for voice-commanded navigation to coordinates
+func engage_autopilot_coordinates(x: float, y: float, z: float, warp_factor: float) -> Dictionary:
+	if not ship:
+		return {"success": false, "message": "Ship systems not ready."}
+
+	if warp_drive and warp_drive.is_at_warp:
+		return {"success": false, "message": "Cannot set new course while at warp. Disengage first."}
+
+	if _autopilot_active:
+		return {"success": false, "message": "Autopilot already engaged. Disengage first."}
+
+	if is_nan(warp_factor) or warp_factor <= 0 or warp_factor >= 10:
+		return {"success": false, "message": "Warp factor must be between 1 and 9.99."}
+
+	var target_pos := Vector3(x, y, z)
+	var coord_name: String = "%.0f, %.0f, %.0f" % [x, y, z]
+
+	# Set up coordinate-based autopilot
+	_selected_destination = null  # No target node for coordinates
+	_selected_destination_name = coord_name
+	_course_warp_factor = warp_factor
+	_course_use_warp = true
+
+	_autopilot_active = true
+	_autopilot_destination = target_pos
+	_autopilot_last_distance = -1.0
+	_autopilot_using_warp = true
+	_autopilot_aligning = true
+
+	if warp_drive:
+		warp_drive.set_warp_factor(warp_factor)
+
+	if _course_panel:
+		_course_panel.visible = false
+
+	_show_disengage_button()
+
+	print("[VOICE] Course set to coordinates: ", coord_name, " at Warp ", warp_factor)
+	return {"success": true, "message": "Course laid in. Coordinates " + coord_name + ", warp " + str(warp_factor) + "."}
+
+## Public method for voice-commanded impulse
+func set_impulse_voice(percent: int) -> Dictionary:
+	if not ship:
+		return {"success": false, "message": "Ship systems not ready"}
+
+	if warp_drive and warp_drive.is_at_warp:
+		return {"success": false, "message": "Cannot change impulse while at warp."}
+
+	if _autopilot_aligning:
+		return {"success": false, "message": "Helm is aligning for warp. Command rejected."}
+
+	if percent < 0 or percent > 100:
+		return {"success": false, "message": "Impulse must be between 0 and 100 percent."}
+
+	# Map percent to impulse level
+	var level: ShipController.ImpulseLevel = ShipController.ImpulseLevel.STOP
+	var speed_name: String = "All stop"
+
+	if percent >= 100:
+		level = ShipController.ImpulseLevel.FULL
+		speed_name = "Full"
+	elif percent >= 75:
+		level = ShipController.ImpulseLevel.THREE_QUARTER
+		speed_name = "Three quarter"
+	elif percent >= 50:
+		level = ShipController.ImpulseLevel.HALF
+		speed_name = "Half"
+	elif percent >= 25:
+		level = ShipController.ImpulseLevel.QUARTER
+		speed_name = "One quarter"
+	else:
+		level = ShipController.ImpulseLevel.STOP
+		speed_name = "All stop"
+
+	ship.current_impulse = level
+	if ship.has_method("_update_target_speed"):
+		ship._update_target_speed()
+
+	print("[VOICE] Impulse: ", speed_name)
+	return {"success": true, "message": speed_name + " impulse."}
+
+## Public method for voice-commanded all stop
+func all_stop_voice() -> Dictionary:
+	print("[VOICE] All stop")
+
+	# Disengage autopilot if active
+	if _autopilot_active:
+		_disengage_autopilot()
+		return {"success": true, "message": "Autopilot disengaged. All stop."}
+
+	# Stop warp if at warp
+	if warp_drive and warp_drive.is_at_warp:
+		warp_drive.disengage_warp(true)
+		if ship:
+			ship.current_impulse = ShipController.ImpulseLevel.STOP
+			ship._update_target_speed()
+		return {"success": true, "message": "Dropping out of warp. All stop."}
+
+	# Just stop impulse
+	if ship:
+		ship.current_impulse = ShipController.ImpulseLevel.STOP
+		ship._update_target_speed()
+		ship.linear_velocity = ship.linear_velocity * 0.1  # Rapid deceleration
+		ship.angular_velocity = Vector3.ZERO
+
+	return {"success": true, "message": "All stop."}
+
 # === HEADING INPUT PANEL ===
 
 func _on_heading_label_clicked(event: InputEvent) -> void:
@@ -1797,11 +2031,11 @@ func _update_autopilot(_delta: float) -> void:
 	else:
 		arrival_distance = _get_orbit_range(_selected_destination_name)
 
-	# If at warp, drop out at 2 million km (200,000 units) from destination
+	# If at warp, drop out at 1 million km (100,000 units) from destination
 	# But use PREDICTIVE stopping - check if we'll reach it in the next few frames
 	if _autopilot_using_warp and warp_drive and warp_drive.is_at_warp:
-		# 2 million km = 200,000 units at 100× scale
-		arrival_distance = 200000.0
+		# 1 million km = 100,000 units at 100× scale
+		arrival_distance = 100000.0
 
 		# Predictive check: calculate closing speed and stop BEFORE we overshoot
 		if _autopilot_last_distance > 0:
@@ -1830,16 +2064,22 @@ func _update_autopilot(_delta: float) -> void:
 
 ## Handle arrival at destination - stop ship and show prompt
 func _trigger_arrival() -> void:
-	print("Arrived at ", _selected_destination_name)
+	# Store destination name before resetting (for arrival prompt) - with null safety
+	var arrived_at: String = _selected_destination_name if _selected_destination_name else ""
+	var had_destination: bool = _selected_destination != null and arrived_at != ""
+
+	print("Arrived at ", arrived_at if arrived_at else "destination")
+
+	# Reset ALL autopilot state (same as _disengage_autopilot)
 	_autopilot_active = false
 	_autopilot_aligning = false
 	_autopilot_last_distance = -1.0
+	_autopilot_using_warp = false  # Always reset, not conditional
 	_hide_disengage_button()
 
-	# Drop out of warp if using warp autopilot
-	if _autopilot_using_warp and warp_drive and warp_drive.is_at_warp:
+	# Drop out of warp if still at warp
+	if warp_drive and warp_drive.is_at_warp:
 		warp_drive.disengage_warp()
-		_autopilot_using_warp = false
 
 	# Come to full stop on arrival
 	if ship:
@@ -1848,12 +2088,15 @@ func _trigger_arrival() -> void:
 		ship.linear_velocity = Vector3.ZERO
 		ship.angular_velocity = Vector3.ZERO
 
+	# Clear destination references to prevent stale state
+	_selected_destination = null
+	_selected_destination_name = ""
+	_autopilot_destination = Vector3.ZERO
+
 	# Show arrival notification
-	if _selected_destination and _selected_destination_name != "Sun":
-		_show_arrival_prompt(_selected_destination_name)
-	elif not _selected_destination:
-		if warp_drive and warp_drive.is_at_warp:
-			warp_drive.disengage_warp(true)
+	if had_destination and arrived_at != "Sun":
+		_show_arrival_prompt(arrived_at)
+	elif not had_destination:
 		_show_alert("ARRIVED AT COORDINATES - ALL STOP")
 
 ## Apply autopilot rotation using cross product (guaranteed shortest path)
@@ -2546,3 +2789,43 @@ func _on_coord_engage() -> void:
 	_show_disengage_button()
 
 	_coord_panel.visible = false
+
+# =============================================================================
+# COMPUTER MESSAGE DISPLAY (Bridge AI)
+# =============================================================================
+
+var _computer_message_label: Label = null
+var _computer_message_timer: Timer = null
+
+func show_computer_message(message: String) -> void:
+	"""Display a computer announcement on screen."""
+	if not _computer_message_label:
+		_create_computer_message_label()
+
+	_computer_message_label.text = message
+	_computer_message_label.visible = true
+
+	# Auto-hide after 4 seconds
+	if _computer_message_timer:
+		_computer_message_timer.stop()
+	_computer_message_timer.start(4.0)
+
+func _create_computer_message_label() -> void:
+	_computer_message_label = Label.new()
+	_computer_message_label.add_theme_font_size_override("font_size", 22)
+	_computer_message_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))  # Light blue
+	_computer_message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_computer_message_label.anchors_preset = Control.PRESET_CENTER_TOP
+	_computer_message_label.position = Vector2(-200, 80)
+	_computer_message_label.custom_minimum_size = Vector2(400, 30)
+	_computer_message_label.visible = false
+	add_child(_computer_message_label)
+
+	_computer_message_timer = Timer.new()
+	_computer_message_timer.one_shot = true
+	_computer_message_timer.timeout.connect(_on_computer_message_timeout)
+	add_child(_computer_message_timer)
+
+func _on_computer_message_timeout() -> void:
+	if _computer_message_label:
+		_computer_message_label.visible = false

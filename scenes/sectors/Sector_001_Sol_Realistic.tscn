@@ -1,6 +1,9 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scripts/environment/sector_sol_realistic.gd" id="1_sector"]
+[ext_resource type="Script" path="res://scripts/bridge_ai/bridge_ai_receiver.gd" id="12_bridge_ai"]
+[ext_resource type="Script" path="res://scripts/bridge_ai/bridge_command_handler.gd" id="13_bridge_handler"]
+[ext_resource type="Script" path="res://scripts/bridge_ai/ship_state_manager.gd" id="14_state_manager"]
 [ext_resource type="PackedScene" uid="uid://cxl8qs7v8q2r2" path="res://scenes/ship/starship.tscn" id="3_ship"]
 [ext_resource type="Script" path="res://scripts/ship/engine_effects.gd" id="4_engine"]
 [ext_resource type="Script" path="res://scripts/ship/ship_audio.gd" id="5_audio"]
@@ -69,3 +72,20 @@ camera_manager_path = NodePath("../CameraManager")
 [node name="WarpFlashOverlay" type="CanvasLayer" parent="."]
 layer = 100
 script = ExtResource("11_flash_overlay")
+
+[node name="BridgeAIReceiver" type="Node" parent="."]
+script = ExtResource("12_bridge_ai")
+listen_port = 5005
+debug_mode = true
+
+[node name="ShipStateManager" type="Node" parent="."]
+script = ExtResource("14_state_manager")
+ship_path = NodePath("../Starship")
+warp_drive_path = NodePath("../Starship/WarpDrive")
+hud_path = NodePath("../LCARSHUD")
+
+[node name="BridgeCommandHandler" type="Node" parent="."]
+script = ExtResource("13_bridge_handler")
+ship_path = NodePath("../Starship")
+warp_drive_path = NodePath("../Starship/WarpDrive")
+hud_path = NodePath("../LCARSHUD")

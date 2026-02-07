@@ -83,8 +83,8 @@ const WORLD_SCALE: float = 100.0
 # Base: 149,597.87 units × 100 = 14,959,787 units
 const AU: float = 14960000.0
 
-# Warp arrival distance: 2 million km = 200,000 units at 100× scale
-const WARP_ARRIVAL_DISTANCE: float = 200000.0
+# Warp arrival distance: 1 million km = 100,000 units at 100× scale
+const WARP_ARRIVAL_DISTANCE: float = 100000.0
 
 var planet_configs: Array[Dictionary] = [
 	{
